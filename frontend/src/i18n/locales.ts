@@ -2,6 +2,11 @@
 export type Locale = 'zh' | 'zh-TW' | 'en' | 'ja' | 'ko' | 'es' | 'fr' | 'de' | 'ru' | 'ar'
 
 export interface LocaleMessages {
+  practiceUnchaptered: string
+  practiceChapterImportHint: string
+  genAutoChapter: string
+  genAutoChapterHint: string
+
   appName: string
   appSubtitle: string
   navConfig: string
@@ -480,6 +485,11 @@ export interface LocaleMessages {
 }
 
 export const zh: LocaleMessages = {
+  practiceUnchaptered: "未分章",
+  practiceChapterImportHint: "CSV/XLSX 可填写“章节”列，同名自动分组；无章节列仍可正常导入。",
+  genAutoChapter: "AI 自动分章",
+  genAutoChapterHint: "根据资料为每题标注章节；知识点输入仅限定出题范围。",
+
   appName: '过了喵',
   appSubtitle: 'AI 智能出题',
   navConfig: '配置',
@@ -958,6 +968,11 @@ export const zh: LocaleMessages = {
 }
 
 export const zhTW: LocaleMessages = {
+  practiceUnchaptered: "未分章",
+  practiceChapterImportHint: "CSV/XLSX 可填寫「章節」欄，同名自動分組；無章節欄仍可正常匯入。",
+  genAutoChapter: "AI 自動分章",
+  genAutoChapterHint: "根據資料為每題標註章節；知識點輸入僅限定出題範圍。",
+
   appName: '過瞭喵',
   appSubtitle: 'AI 智能出題',
   navConfig: '配置',
@@ -1436,6 +1451,11 @@ export const zhTW: LocaleMessages = {
 }
 
 export const en: LocaleMessages = {
+  practiceUnchaptered: "Unchaptered",
+  practiceChapterImportHint: "Add a Chapter column to CSV/XLSX to group questions by name. Files without chapters still work.",
+  genAutoChapter: "AI chapter tagging",
+  genAutoChapterHint: "Label each question from the material; the topic input only limits the question scope.",
+
   appName: 'Exameow',
   appSubtitle: 'AI Question Generator',
   navConfig: 'Config',
@@ -1914,6 +1934,11 @@ export const en: LocaleMessages = {
 }
 
 export const ja: LocaleMessages = {
+  practiceUnchaptered: "章未設定",
+  practiceChapterImportHint: "CSV/XLSX の「Chapter」列で同名の章をまとめます。章のないファイルも読み込めます。",
+  genAutoChapter: "AIで章を自動設定",
+  genAutoChapterHint: "資料から各問題の章を設定します。トピック入力は出題範囲のみを指定します。",
+
   appName: 'Exameow',
   appSubtitle: 'AI問題ジェネレーター',
   navConfig: '設定',
@@ -2392,6 +2417,11 @@ export const ja: LocaleMessages = {
 }
 
 export const ko: LocaleMessages = {
+  practiceUnchaptered: "미분류",
+  practiceChapterImportHint: "CSV/XLSX에 Chapter 열을 추가하면 같은 이름으로 묶습니다. 장이 없는 파일도 가져올 수 있습니다.",
+  genAutoChapter: "AI 자동 장 분류",
+  genAutoChapterHint: "자료를 바탕으로 각 문제의 장을 지정합니다. 주제 입력은 출제 범위만 제한합니다.",
+
   appName: 'Exameow',
   appSubtitle: 'AI 문제 생성기',
   navConfig: '설정',
@@ -2870,6 +2900,11 @@ export const ko: LocaleMessages = {
 }
 
 export const es: LocaleMessages = {
+  practiceUnchaptered: "Sin capítulo",
+  practiceChapterImportHint: "Añade una columna Chapter al CSV/XLSX para agrupar por nombre. También se admiten archivos sin capítulos.",
+  genAutoChapter: "Capítulos automáticos con IA",
+  genAutoChapterHint: "Asigna un capítulo según el material; el tema solo limita el alcance de las preguntas.",
+
   appName: 'Exameow',
   appSubtitle: 'Generador de Exámenes IA',
   navConfig: 'Configuración',
@@ -3348,6 +3383,11 @@ export const es: LocaleMessages = {
 }
 
 export const fr: LocaleMessages = {
+  practiceUnchaptered: "Sans chapitre",
+  practiceChapterImportHint: "Ajoutez une colonne Chapter au CSV/XLSX pour regrouper par nom. Les fichiers sans chapitres restent compatibles.",
+  genAutoChapter: "Chapitres automatiques par IA",
+  genAutoChapterHint: "Attribue un chapitre selon le document ; le sujet limite uniquement la portée des questions.",
+
   appName: 'Exameow',
   appSubtitle: 'Générateur d\\\\\\\\\\\\\\\'Examens IA',
   navConfig: 'Configuration',
@@ -3826,6 +3866,11 @@ export const fr: LocaleMessages = {
 }
 
 export const de: LocaleMessages = {
+  practiceUnchaptered: "Ohne Kapitel",
+  practiceChapterImportHint: "Eine Chapter-Spalte in CSV/XLSX gruppiert Fragen nach Namen. Dateien ohne Kapitel werden weiterhin unterstützt.",
+  genAutoChapter: "KI-Kapitelzuordnung",
+  genAutoChapterHint: "Ordnet Fragen anhand des Materials zu; das Thema begrenzt nur den Fragenumfang.",
+
   appName: 'Exameow',
   appSubtitle: 'KI Prüfungsgenerator',
   navConfig: 'Konfiguration',
@@ -4304,6 +4349,11 @@ export const de: LocaleMessages = {
 }
 
 export const ru: LocaleMessages = {
+  practiceUnchaptered: "Без главы",
+  practiceChapterImportHint: "Столбец Chapter в CSV/XLSX группирует вопросы по названию. Файлы без глав также поддерживаются.",
+  genAutoChapter: "Главы с помощью ИИ",
+  genAutoChapterHint: "Определяет главу по материалу; поле темы только ограничивает область вопросов.",
+
   appName: 'Exameow',
   appSubtitle: 'ИИ Генератор Тестов',
   navConfig: 'Настройки',
@@ -4782,6 +4832,11 @@ export const ru: LocaleMessages = {
 }
 
 export const ar: LocaleMessages = {
+  practiceUnchaptered: "بلا فصل",
+  practiceChapterImportHint: "أضف عمود Chapter إلى CSV/XLSX لتجميع الأسئلة حسب الاسم. تبقى الملفات بلا فصول مدعومة.",
+  genAutoChapter: "تصنيف الفصول بالذكاء الاصطناعي",
+  genAutoChapterHint: "يحدد فصل كل سؤال حسب المادة؛ حقل الموضوع يحدد نطاق الأسئلة فقط.",
+
   appName: 'Exameow',
   appSubtitle: 'مولد أسئلة الامتحانات بالذكاء الاصطناعي',
   navConfig: 'الإعدادات',
