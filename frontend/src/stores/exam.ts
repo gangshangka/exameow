@@ -26,6 +26,7 @@ export const useExamStore = defineStore('exam', () => {
   const difficulty = ref<Difficulty>('medium' as Difficulty)
   const language = ref('zh-CN')
   const topicFilter = ref('')
+  const autoChapter = ref(false)
   const subject = ref('')
   const questions = ref<Question[]>(loadCachedQuestions())
   const sourceFileName = ref(loadCachedSourceFile())
@@ -52,6 +53,7 @@ export const useExamStore = defineStore('exam', () => {
       difficulty: difficulty.value,
       language: language.value,
       topic_filter: topicFilter.value || undefined,
+      auto_chapter: autoChapter.value,
     }
   }
 
@@ -351,10 +353,10 @@ export const useExamStore = defineStore('exam', () => {
           if (useDirectAI && batch.text) {
             const { callCustomAI } = await import('@/utils/aiClient')
             const q = await callCustomAI(batch.text, batch, config, signal)
-            return tagQuestions(q, batch.text, sourceFileName.value, subject.value, topicFilter.value, requestedDifficulty)
+            return tagQuestions(q, batch.text, sourceFileName.value, subject.value, topicFilter.value, requestedDifficulty, batch.auto_chapter)
           }
           const result = await api.generateExam(fileRef, batch, config, signal)
-          return tagQuestions(result.questions, batch.text ?? '', sourceFileName.value, subject.value, topicFilter.value, requestedDifficulty)
+          return tagQuestions(result.questions, batch.text ?? '', sourceFileName.value, subject.value, topicFilter.value, requestedDifficulty, batch.auto_chapter)
         }
         try {
           return await exec()
@@ -430,6 +432,9 @@ export const useExamStore = defineStore('exam', () => {
       for (let i = 0; i < batches.length; i++) {
         if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
         const batch = batches[i]!
+        if (batch.auto_chapter) {
+          batch.chapter_names = [...new Set(questions.value.flatMap(q => q.chapter ? [q.chapter] : []))]
+        }
         progress.value = { current: i, total: batches.length, phase: 'generating', message: i18n.t('genProgressGeneratingBatch', { current: i + 1, total: batches.length }) }
         try {
           generated += await tryGenerate(batch)
@@ -476,7 +481,7 @@ export const useExamStore = defineStore('exam', () => {
 
   return {
     questionTypes, typeCounts, totalCount,
-    difficulty, language, topicFilter, subject, questions, generating, generated,
+    difficulty, language, topicFilter, autoChapter, subject, questions, generating, generated,
     sourceFileName, error, progress, getParams, generate, cancelGeneration, reset,
     extraPrompt, summary,
   }
