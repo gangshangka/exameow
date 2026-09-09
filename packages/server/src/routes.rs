@@ -117,9 +117,6 @@ pub async fn generate_exam_handler(
         }
     }
 
-    let file_data =
-        file_data.ok_or((StatusCode::BAD_REQUEST, "No file uploaded".to_string()))?;
-
     let endpoint = if endpoint.is_empty() { ai_endpoint() } else { endpoint };
     let api_key = if api_key.is_empty() { ai_api_key() } else { api_key };
     let model = if model.is_empty() { ai_model() } else { model };
@@ -131,24 +128,33 @@ pub async fn generate_exam_handler(
     let params: ExamParams = serde_json::from_str(&params_json)
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid params: {e}")))?;
 
-    let ext = file_name.rsplit_once('.').map(|(_, e)| e).unwrap_or("txt");
-    let mut temp_file = tempfile::Builder::new()
-        .suffix(&format!(".{ext}"))
-        .tempfile()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    temp_file
-        .write_all(&file_data)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let text = match params.text.as_deref() {
+        Some(t) if !t.trim().is_empty() => t.to_string(),
+        _ => {
+            let file_data =
+                file_data.ok_or((StatusCode::BAD_REQUEST, "No file uploaded".to_string()))?;
 
-    let (_, temp_path) = temp_file
-        .keep()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let temp_path_str = temp_path.to_string_lossy().to_string();
+            let ext = file_name.rsplit_once('.').map(|(_, e)| e).unwrap_or("txt");
+            let mut temp_file = tempfile::Builder::new()
+                .suffix(&format!(".{ext}"))
+                .tempfile()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            temp_file
+                .write_all(&file_data)
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let text = parse_file(&temp_path_str)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Parse error: {e}")))?;
+            let (_, temp_path) = temp_file
+                .keep()
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let temp_path_str = temp_path.to_string_lossy().to_string();
 
-    let _ = std::fs::remove_file(&temp_path_str);
+            let parsed = parse_file(&temp_path_str)
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("Parse error: {e}")))?;
+
+            let _ = std::fs::remove_file(&temp_path_str);
+            parsed
+        }
+    };
 
     let client = AIClient::new(&endpoint, &api_key);
     let questions = generate_exam(&client, &text, &params, &model)
