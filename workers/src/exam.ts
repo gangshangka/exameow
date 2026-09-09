@@ -15,7 +15,9 @@ export async function generateExam(
     model,
     systemPrompt,
     userPrompt,
-    maxTokens: params.max_tokens,
+    ...(params.max_tokens === undefined
+      ? { omitMaxTokens: true }
+      : { maxTokens: params.max_tokens }),
   })
   console.log('AI response preview:', response.substring(0, 200))
   return normalizeQuestionDifficulty(parseQuestions(response), params.difficulty)

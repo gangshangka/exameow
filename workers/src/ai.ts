@@ -6,6 +6,7 @@ interface AIChatInput {
   systemPrompt: string
   userPrompt: string
   maxTokens?: number
+  omitMaxTokens?: boolean
 }
 
 function isReadableStream(value: unknown): value is ReadableStream {
@@ -69,7 +70,9 @@ export async function aiChat(
     temperature: 0.7,
     stream: false,
   }
-  if (input.maxTokens !== undefined) options.max_tokens = input.maxTokens
+  if (!input.omitMaxTokens) {
+    options.max_tokens = typeof input.maxTokens === 'number' ? input.maxTokens : 16384
+  }
 
   const result: any = await ai.run(model as any, options)
 
