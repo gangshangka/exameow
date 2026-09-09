@@ -2100,7 +2100,7 @@ export const ja: LocaleMessages = {
   practiceQuestionUnit: '問',
   practiceMultiFileHint: '複数ファイル選択可',
   practiceFileCount: '{n} 個のファイル',
-  practiceAddFile: 'ファイル追加',
+  practiceAddFile: '+ ファイル追加',
   practiceClearAll: 'すべてクリア',
   practiceImportCount: '{n} 問のインポート準備完了',
   practiceImportColType: '形式列',
