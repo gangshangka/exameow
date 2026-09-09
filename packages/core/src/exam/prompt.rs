@@ -79,17 +79,24 @@ pub fn build_user_prompt(text: &str, params: &ExamParams) -> String {
         _ => String::new(),
     };
 
-    let max_chars = 32000;
-    let text_section = if text.len() > max_chars {
-        let head_size = max_chars * 6 / 10;
-        let tail_size = max_chars - head_size;
-        let head_len = safe_char_boundary(text, head_size);
-        let head = &text[..head_len];
-        let tail_start = safe_char_boundary(text, text.len().saturating_sub(tail_size));
-        let tail = if tail_start > head_len + 100 {
+    let max_chars = 32000usize;
+    let total_chars = text.chars().count();
+    let text_section = if total_chars > max_chars {
+        let head_chars = max_chars * 6 / 10;
+        let tail_chars = max_chars - head_chars;
+        let mut head_end = text.len();
+        if let Some((idx, _)) = text.char_indices().nth(head_chars) {
+            head_end = idx;
+        }
+        let head = &text[..head_end];
+        let tail_start = {
+            let skip = total_chars.saturating_sub(tail_chars);
+            text.char_indices().nth(skip).map(|(i, _)| i).unwrap_or(text.len())
+        };
+        let tail = if tail_start > head_end + 100 {
             format!("\n\n...(middle omitted)...\n\n{}", &text[tail_start..])
         } else {
-            text[head_len..].to_string()
+            text[head_end..].to_string()
         };
         format!("{}{}", head, tail)
     } else {
@@ -167,16 +174,6 @@ pub fn normalize_question_difficulty(questions: &mut [Question], difficulty: &Di
     }
 }
 
-fn safe_char_boundary(s: &str, mut index: usize) -> usize {
-    if index >= s.len() {
-        return s.len();
-    }
-    while index > 0 && !s.is_char_boundary(index) {
-        index -= 1;
-    }
-    index
-}
-
 pub async fn generate_exam(
     client: &AIClient,
     text: &str,
@@ -229,5 +226,19 @@ mod tests {
         let p = build_user_prompt("x", &sample_params(None));
         assert!(!p.contains("Additional Instructions"));
         assert!(p.contains("DOCUMENT CONTENT:"));
+    }
+
+    #[test]
+    fn chinese_text_below_char_budget_is_not_truncated() {
+        // 12_000 CJK chars ≈ 36_000 bytes > 32_000: must NOT be truncated
+        // (counts characters, not bytes).
+        let body = "中".repeat(12_000);
+        let p = build_user_prompt(&body, &sample_params(None));
+        assert!(!p.contains("middle omitted"));
+        assert!(p.contains("DOCUMENT CONTENT:"));
+        // Guard must still fire for genuinely oversized text (>32000 chars).
+        let huge = "字".repeat(32_100);
+        let p2 = build_user_prompt(&huge, &sample_params(None));
+        assert!(p2.contains("middle omitted"));
     }
 }
