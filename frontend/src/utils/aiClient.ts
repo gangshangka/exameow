@@ -64,6 +64,10 @@ function buildUserPrompt(text: string, params: ExamParams): string {
       : `\nThe document title is: ${params.source_name}\nWhen questions need to reference this document, use "${params.source_name}" — do NOT say "the document" or "the text".`
     : ''
 
+  const customNote = params.custom_prompt
+    ? `\n\n## Additional Instructions (user-provided, highest priority)\n${params.custom_prompt}\n\n## Document rules still apply`
+    : ''
+
   const maxChars = 32000
   const textSection =
     text.length > maxChars
@@ -88,7 +92,7 @@ function buildUserPrompt(text: string, params: ExamParams): string {
 
   return `${countInstruction}
 Difficulty: ${difficultyStr}
-Language: ${params.language}${topicNote}${batchNote}${docName}
+Language: ${params.language}${topicNote}${batchNote}${docName}${customNote}
 
 DOCUMENT CONTENT:
 ${textSection}`
@@ -136,15 +140,15 @@ export async function callCustomAI(
   const endpoint = normalizeEndpoint(config.endpoint)
   const url = `${endpoint}/chat/completions`
 
-  const body = {
+  const body: Record<string, unknown> = {
     model: config.model,
     messages: [
       { role: 'system', content: buildSystemPrompt() },
       { role: 'user', content: buildUserPrompt(text, params) },
     ],
     temperature: 0.7,
-    max_tokens: 16384,
   }
+  if (typeof params.max_tokens === 'number') body.max_tokens = params.max_tokens
 
   const res = await fetch(url, {
     method: 'POST',
