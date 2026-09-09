@@ -178,6 +178,24 @@ async function handleSave() {
       </div>
     </div>
 
+    <!-- Response Max Tokens (optional) -->
+    <div class="card-filled p-5 sm:p-6 mb-4 shadow-sm border border-[rgb(var(--md-outline-variant)/0.3)]">
+      <label class="text-label-md font-semibold block mb-3" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('configMaxTokens') }}</label>
+      <input
+        :value="configStore.maxTokens ?? ''"
+        type="number"
+        min="1"
+        step="1"
+        class="input-outlined text-sm !py-3 !rounded-xl"
+        :placeholder="i18n.t('configMaxTokensHint')"
+        @input="(e: Event) => {
+          const v = (e.target as HTMLInputElement).value
+          configStore.maxTokens = v === '' ? null : Math.max(1, Math.floor(Number(v)) || 1)
+        }"
+      />
+      <p class="text-body-sm mt-2" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('configMaxTokensHint') }}</p>
+    </div>
+
     <Transition name="scale">
       <div
         v-if="configFetchError"

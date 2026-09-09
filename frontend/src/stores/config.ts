@@ -15,6 +15,7 @@ export const useConfigStore = defineStore('config', () => {
   const endpoint = ref('')
   const apiKey = ref('')
   const model = ref('')
+  const maxTokens = ref<number | null>(null)
   const models = ref<ModelInfo[]>([])
   const loading = ref(false)
   const aiProvider = ref<AIProvider>('cf-free')
@@ -39,6 +40,7 @@ export const useConfigStore = defineStore('config', () => {
       if (saved.endpoint) endpoint.value = saved.endpoint
       if (saved.api_key) apiKey.value = saved.api_key
       model.value = saved.model
+      maxTokens.value = typeof saved.max_tokens === 'number' ? saved.max_tokens : null
     }
     if (isCloudflare()) {
       const provider = localStorage.getItem('exameow_ai_provider')
@@ -109,14 +111,19 @@ export const useConfigStore = defineStore('config', () => {
       return
     }
     endpoint.value = normalizeEndpoint(endpoint.value)
-    await api.saveConfig({ endpoint: endpoint.value, api_key: apiKey.value, model: model.value })
+    await api.saveConfig({
+      endpoint: endpoint.value,
+      api_key: apiKey.value,
+      model: model.value,
+      max_tokens: maxTokens.value ?? undefined,
+    })
   }
 
   function getConfig(): AIConfig {
     if (!isCloudflare() && !isTauri() && aiProvider.value === 'server') {
-      return { endpoint: '', api_key: '', model: model.value }
+      return { endpoint: '', api_key: '', model: model.value, max_tokens: maxTokens.value ?? undefined }
     }
-    return { endpoint: endpoint.value, api_key: apiKey.value, model: model.value }
+    return { endpoint: endpoint.value, api_key: apiKey.value, model: model.value, max_tokens: maxTokens.value ?? undefined }
   }
 
   function setProvider(provider: AIProvider) {
@@ -130,5 +137,5 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
-  return { endpoint, apiKey, model, models, loading, configured, aiProvider, serverInfo, loadSaved, fetchModels, save, getConfig, setProvider }
+  return { endpoint, apiKey, model, maxTokens, models, loading, configured, aiProvider, serverInfo, loadSaved, fetchModels, save, getConfig, setProvider }
 })

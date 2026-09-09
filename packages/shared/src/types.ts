@@ -79,12 +79,15 @@ export interface ExamParams {
   batch_index?: number
   batch_total?: number
   source_name?: string
+  custom_prompt?: string
+  max_tokens?: number
 }
 
 export interface AIConfig {
   endpoint: string
   api_key: string
   model: string
+  max_tokens?: number
 }
 
 export interface ModelInfo {

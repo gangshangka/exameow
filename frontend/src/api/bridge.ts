@@ -145,7 +145,12 @@ export const tauriApi = {
   },
 
   async saveConfig(config: AIConfig): Promise<void> {
-    return invoke<void>('save_config', { endpoint: config.endpoint, apiKey: config.api_key, model: config.model })
+    return invoke<void>('save_config', {
+      endpoint: config.endpoint,
+      apiKey: config.api_key,
+      model: config.model,
+      maxTokens: config.max_tokens ?? null,
+    })
   },
 
   async loadConfig(): Promise<AIConfig | null> {
