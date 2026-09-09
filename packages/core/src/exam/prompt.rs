@@ -72,6 +72,13 @@ pub fn build_user_prompt(text: &str, params: &ExamParams) -> String {
         None => String::new(),
     };
 
+    let custom_note = match &params.custom_prompt {
+        Some(p) if !p.trim().is_empty() => format!(
+            "\n\n## Additional Instructions (user-provided, highest priority)\n{p}\n\n## Document rules still apply"
+        ),
+        _ => String::new(),
+    };
+
     let max_chars = 32000;
     let text_section = if text.len() > max_chars {
         let head_size = max_chars * 6 / 10;
@@ -120,7 +127,7 @@ pub fn build_user_prompt(text: &str, params: &ExamParams) -> String {
     format!(
         r#"{count_instruction}
 Difficulty: {difficulty_str}
-Language: {language}{topic_note}{batch_note}{doc_name}
+Language: {language}{topic_note}{batch_note}{doc_name}{custom_note}
 
 DOCUMENT CONTENT:
 {text_content}
@@ -131,6 +138,7 @@ DOCUMENT CONTENT:
         topic_note = topic_note,
         batch_note = batch_note,
         doc_name = doc_name,
+        custom_note = custom_note,
         text_content = text_section,
     )
 }
@@ -178,8 +186,48 @@ pub async fn generate_exam(
     let doc_text = params.text.as_deref().unwrap_or(text);
     let system_prompt = build_system_prompt();
     let user_prompt = build_user_prompt(doc_text, params);
-    let response = client.chat(&system_prompt, &user_prompt, model).await?;
+    let response = client
+        .chat_with_max_tokens(&system_prompt, &user_prompt, model, params.max_tokens)
+        .await?;
     let mut questions = parse_questions(&response)?;
     normalize_question_difficulty(&mut questions, &params.difficulty);
     Ok(questions)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::exam::{Difficulty, ExamParams, QuestionType};
+
+    fn sample_params(custom_prompt: Option<String>) -> ExamParams {
+        ExamParams {
+            question_types: vec![QuestionType::SingleChoice],
+            count: 5,
+            difficulty: Difficulty::Medium,
+            language: "zh-CN".into(),
+            topic_filter: None,
+            type_counts: None,
+            text: Some("第1章 内容。".repeat(20)),
+            batch_index: None,
+            batch_total: None,
+            source_name: Some("单元1".into()),
+            custom_prompt,
+            max_tokens: None,
+        }
+    }
+
+    #[test]
+    fn custom_prompt_is_injected_when_present() {
+        let p = build_user_prompt("x", &sample_params(Some("忽略参考文献。".into())));
+        assert!(p.contains("## Additional Instructions (user-provided, highest priority)"));
+        assert!(p.contains("忽略参考文献。"));
+        assert!(p.contains("DOCUMENT CONTENT:"));
+    }
+
+    #[test]
+    fn custom_prompt_absent_leaves_prompt_clean() {
+        let p = build_user_prompt("x", &sample_params(None));
+        assert!(!p.contains("Additional Instructions"));
+        assert!(p.contains("DOCUMENT CONTENT:"));
+    }
 }

@@ -203,7 +203,7 @@ pub async fn save_config_handler(
 ) -> Result<StatusCode, (StatusCode, String)> {
     _state
         .config_store
-        .save(&config.endpoint, &config.api_key, &config.model)
+        .save(&config.endpoint, &config.api_key, &config.model, config.max_tokens)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Save error: {e}")))?;
     Ok(StatusCode::OK)
 }

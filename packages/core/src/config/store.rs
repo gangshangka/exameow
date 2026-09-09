@@ -10,6 +10,8 @@ pub struct AIConfigData {
     pub endpoint: String,
     pub api_key: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
 }
 
 pub struct ConfigStore {
@@ -100,11 +102,18 @@ impl ConfigStore {
         Ok(Self { config_path, key })
     }
 
-    pub fn save(&self, endpoint: &str, api_key: &str, model: &str) -> Result<(), CoreError> {
+    pub fn save(
+        &self,
+        endpoint: &str,
+        api_key: &str,
+        model: &str,
+        max_tokens: Option<u32>,
+    ) -> Result<(), CoreError> {
         let config = AIConfigData {
             endpoint: endpoint.to_string(),
             api_key: api_key.to_string(),
             model: model.to_string(),
+            max_tokens,
         };
 
         let plaintext = serde_json::to_vec(&config)

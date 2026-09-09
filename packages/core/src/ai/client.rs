@@ -66,6 +66,27 @@ impl AIClient {
         self.post_chat(body).await
     }
 
+    pub async fn chat_with_max_tokens(
+        &self,
+        system_prompt: &str,
+        user_prompt: &str,
+        model: &str,
+        max_tokens: Option<u32>,
+    ) -> Result<String, CoreError> {
+        let mut body = serde_json::json!({
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.7,
+        });
+        if let Some(mt) = max_tokens {
+            body["max_tokens"] = serde_json::json!(mt);
+        }
+        self.post_chat(body).await
+    }
+
     pub async fn chat_with_image(
         &self,
         system_prompt: &str,

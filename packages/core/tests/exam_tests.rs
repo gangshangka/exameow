@@ -48,6 +48,8 @@ fn test_build_user_prompt() {
         batch_index: None,
         batch_total: None,
         source_name: None,
+        custom_prompt: None,
+        max_tokens: None,
     };
     let text = "Sample document content about ML.";
     let prompt = build_user_prompt(text, &params);
@@ -75,6 +77,8 @@ fn test_build_user_prompt_with_counts() {
         batch_index: None,
         batch_total: None,
         source_name: None,
+        custom_prompt: None,
+        max_tokens: None,
     };
     let text = "Test content.";
     let prompt = build_user_prompt(text, &params);
@@ -175,6 +179,8 @@ async fn test_generate_exam_response_path_normalizes_every_question_difficulty()
         batch_index: None,
         batch_total: None,
         source_name: None,
+        custom_prompt: None,
+        max_tokens: None,
     };
 
     let questions = generate_exam(&client, "Boundary test content", &params, "mock-model")

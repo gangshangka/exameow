@@ -94,4 +94,8 @@ pub struct ExamParams {
     pub batch_total: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
 }
