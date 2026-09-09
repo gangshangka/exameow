@@ -128,6 +128,16 @@ function toggleType(type: QuestionType) {
           class="input-outlined text-sm !py-3 !rounded-xl"
         />
       </div>
+
+      <div class="col-span-2">
+        <label class="text-label-md font-semibold tracking-wide block mb-2" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('genExtraPrompt') }}</label>
+        <textarea
+          v-model="store.extraPrompt"
+          :placeholder="i18n.t('genExtraPromptPlaceholder')"
+          rows="3"
+          class="input-outlined text-sm !py-3 !rounded-xl w-full resize-y"
+        ></textarea>
+      </div>
     </div>
   </div>
 </template>
