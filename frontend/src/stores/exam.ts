@@ -331,7 +331,9 @@ export const useExamStore = defineStore('exam', () => {
       }
       const batches = buildBatches(baseParams)
       const firstInput = inputs[0]!
-      console.log('[Exameow] fileRef debug:', { isTauri: isTauri(), firstInputType: typeof firstInput, firstInputVal: firstInput })
+      if (import.meta.env.DEV) {
+        console.log('[Exameow] fileRef debug:', { isTauri: isTauri(), firstInputType: typeof firstInput, firstInputVal: firstInput })
+      }
       const fileRef = isTauri()
         ? (typeof firstInput === 'string' ? firstInput : (firstInput as File).name || 'file')
         : (firstInput as File)
@@ -358,6 +360,10 @@ export const useExamStore = defineStore('exam', () => {
           return await exec()
         } catch (e: any) {
           if (e?.name === 'AbortError' || signal.aborted) throw e
+          progress.value = {
+            ...progress.value,
+            message: i18n.t('genRetrying', { current: batch.batch_index ?? 0, total: batch.batch_total ?? 1 }),
+          }
           return await exec()
         }
       }
@@ -372,6 +378,17 @@ export const useExamStore = defineStore('exam', () => {
         } catch (e: any) {
           if (e?.name === 'AbortError' || signal.aborted) throw e
           const textLen = batch.text?.length ?? 0
+          if (expected === 1 && textLen >= 1500 && depth < 3) {
+            const [textA, textB] = splitTextChunk(batch.text!)
+            if (textA.trim()) {
+              const produced = await tryGenerate({ ...batch, text: textA }, depth + 1)
+              if (produced > 0) return produced
+            }
+            if (textB.trim()) {
+              return await tryGenerate({ ...batch, text: textB }, depth + 1)
+            }
+            return 0
+          }
           if (depth >= 3 || expected <= 1 || textLen < 1500) {
             console.warn(`[Exameow] give up batch ${batch.batch_index}: ${e}`)
             return 0
@@ -403,9 +420,11 @@ export const useExamStore = defineStore('exam', () => {
 
       const uniqueTexts = new Set(batches.map(b => b.text)).size
       const chunkSizes = [...new Set(batches.map(b => b.text || ''))].map(t => t.length)
-      console.log(
-        `[Exameow] ${batches.length} batches, ${uniqueTexts} unique text chunks, sizes: ${JSON.stringify(chunkSizes)}`,
-      )
+      if (import.meta.env.DEV) {
+        console.log(
+          `[Exameow] ${batches.length} batches, ${uniqueTexts} unique text chunks, sizes: ${JSON.stringify(chunkSizes)}`,
+        )
+      }
 
       let generated = 0
       for (let i = 0; i < batches.length; i++) {
