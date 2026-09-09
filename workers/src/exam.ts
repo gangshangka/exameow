@@ -15,9 +15,7 @@ export async function generateExam(
     model,
     systemPrompt,
     userPrompt,
-    ...(params.max_tokens === undefined
-      ? { omitMaxTokens: true }
-      : { maxTokens: params.max_tokens }),
+    maxTokens: params.max_tokens,
   })
   console.log('AI response preview:', response.substring(0, 200))
   return normalizeQuestionDifficulty(parseQuestions(response), params.difficulty)
@@ -88,8 +86,9 @@ function buildUserPrompt(text: string, params: ExamParams): string {
       : `\nThe document title is: ${params.source_name}\nWhen questions need to reference this document, use "${params.source_name}" — do NOT say "the document" or "the text".`
     : ''
 
-  const customNote = params.custom_prompt
-    ? `\n\n## Additional Instructions (user-provided, highest priority)\n${params.custom_prompt}\n\n## Document rules still apply`
+  const customPrompt = params.custom_prompt?.trim()
+  const customNote = customPrompt
+    ? `\n\n## Additional Instructions (user-provided, highest priority)\n${customPrompt}\n\n## Document rules still apply`
     : ''
 
   const maxChars = 32000
