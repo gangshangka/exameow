@@ -5,6 +5,7 @@ interface AIChatInput {
   model?: string
   systemPrompt: string
   userPrompt: string
+  maxTokens?: number
 }
 
 function isReadableStream(value: unknown): value is ReadableStream {
@@ -60,15 +61,17 @@ export async function aiChat(
 ): Promise<string> {
   const model = input.model || DEFAULT_MODEL
 
-  const result: any = await ai.run(model as any, {
+  const options: Record<string, unknown> = {
     messages: [
       { role: 'system', content: input.systemPrompt },
       { role: 'user', content: input.userPrompt },
     ],
     temperature: 0.7,
-    max_tokens: 16384,
     stream: false,
-  })
+  }
+  if (input.maxTokens !== undefined) options.max_tokens = input.maxTokens
+
+  const result: any = await ai.run(model as any, options)
 
   console.log('AI result type:', typeof result, 'keys:', result ? Object.keys(result) : 'null')
 

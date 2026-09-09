@@ -36,6 +36,8 @@ export interface ExamParams {
   batch_index?: number
   batch_total?: number
   source_name?: string
+  custom_prompt?: string
+  max_tokens?: number
 }
 
 export interface AIConfigData {

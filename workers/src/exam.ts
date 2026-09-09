@@ -11,7 +11,12 @@ export async function generateExam(
   const systemPrompt = buildSystemPrompt()
   const docText = params.text || text
   const userPrompt = buildUserPrompt(docText, params)
-  const response = await aiChat(ai, { model, systemPrompt, userPrompt })
+  const response = await aiChat(ai, {
+    model,
+    systemPrompt,
+    userPrompt,
+    maxTokens: params.max_tokens,
+  })
   console.log('AI response preview:', response.substring(0, 200))
   return normalizeQuestionDifficulty(parseQuestions(response), params.difficulty)
 }
@@ -81,6 +86,10 @@ function buildUserPrompt(text: string, params: ExamParams): string {
       : `\nThe document title is: ${params.source_name}\nWhen questions need to reference this document, use "${params.source_name}" — do NOT say "the document" or "the text".`
     : ''
 
+  const customNote = params.custom_prompt
+    ? `\n\n## Additional Instructions (user-provided, highest priority)\n${params.custom_prompt}\n\n## Document rules still apply`
+    : ''
+
   const maxChars = 32000
   const textSection =
     text.length > maxChars
@@ -105,7 +114,7 @@ function buildUserPrompt(text: string, params: ExamParams): string {
 
   return `${countInstruction}
 Difficulty: ${difficultyStr}
-Language: ${params.language}${topicNote}${batchNote}${docName}
+Language: ${params.language}${topicNote}${batchNote}${docName}${customNote}
 
 DOCUMENT CONTENT:
 ${textSection}`
