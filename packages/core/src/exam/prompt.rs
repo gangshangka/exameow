@@ -217,6 +217,8 @@ mod tests {
             batch_index: None,
             batch_total: None,
             source_name: Some("单元1".into()),
+            auto_chapter: false,
+            chapter_names: None,
             custom_prompt,
             max_tokens: None,
         }

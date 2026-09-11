@@ -7,7 +7,9 @@ const root = path.resolve(__dirname, '..')
 const ts = require(path.join(root, 'frontend/node_modules/typescript'))
 const resolve = Module._resolveFilename
 Module._resolveFilename = function (id, parent, ...args) {
-  return resolve.call(this, id === '@exameow/shared' ? path.join(root, 'packages/shared/src/index.ts') : id, parent, ...args)
+  if (id === '@exameow/shared') return resolve.call(this, path.join(root, 'packages/shared/src/index.ts'), parent, ...args)
+  if (id.startsWith('@/')) return resolve.call(this, path.join(root, 'frontend/src', id.slice(2)), parent, ...args)
+  return resolve.call(this, id, parent, ...args)
 }
 require.extensions['.ts'] = (module, filename) => {
   module._compile(ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
@@ -55,7 +57,7 @@ async function testTransport() {
   const ai = { run: async (_model, body) => {
     assert.match(body.messages[0].content, /also include "chapter"/)
     assert.match(body.messages[1].content, /Chapter 1/)
-    return Response.json({ response: JSON.stringify([{ id: 'q1', type: 'short_answer', stem: 'Q', answer: 'A', analysis: '', chapter: 'Chapter 1' }]) })
+    return { response: JSON.stringify([{ id: 'q1', type: 'short_answer', stem: 'Q', answer: 'A', analysis: '', chapter: 'Chapter 1' }]) }
   } }
   const generated = await worker.generateExam(ai, 'Content', { ...params, auto_chapter: true, chapter_names: ['Chapter 1'] }, 'test')
   assert.equal(generated[0].chapter, 'Chapter 1')
