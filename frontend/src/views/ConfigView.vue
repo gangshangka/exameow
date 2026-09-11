@@ -7,7 +7,6 @@ import { useI18nStore } from '@/stores/i18n'
 import { isCloudflare, isTauri } from '@/utils/platform'
 import BaseCombobox from '@/components/common/BaseCombobox.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
-import BaseSwitch from '@/components/common/BaseSwitch.vue'
 import { ServerIcon, KeyIcon, CloudArrowDownIcon, CpuChipIcon, CheckCircleIcon, EyeIcon, EyeSlashIcon, CheckIcon, ArrowRightIcon, ArrowLeftIcon, CloudIcon, AdjustmentsHorizontalIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
 
 const configStore = useConfigStore()
@@ -196,7 +195,7 @@ async function handleSave() {
     <div class="card-filled p-5 sm:p-6 mb-4 shadow-sm border border-[rgb(var(--md-outline-variant)/0.3)]">
       <button
         type="button"
-        class="w-full flex items-center gap-3 -mx-2 px-2 py-1 rounded-2xl text-left transition-colors hover:bg-[rgb(var(--md-on-surface-variant)/0.08)] cursor-pointer"
+        class="w-full flex items-center gap-3 text-left cursor-pointer"
         :aria-expanded="advancedOpen"
         aria-controls="advanced-ai-panel"
         @click="advancedOpen = !advancedOpen"
@@ -250,22 +249,20 @@ async function handleSave() {
             <div>
               <label class="text-label-md block">{{ i18n.t('configTemperature') }}</label>
               <input
-                :value="configStore.temperature"
+                :value="configStore.temperature ?? ''"
                 type="number"
                 min="0"
                 max="2"
                 step="0.1"
-                :disabled="configStore.omitTemperature"
-                class="input-outlined w-full mt-2 text-sm disabled:opacity-50"
+                class="input-outlined w-full mt-2 text-sm"
+                :placeholder="i18n.t('configOmitTemperature')"
                 @input="(e: Event) => {
-                  const v = Number((e.target as HTMLInputElement).value)
+                  const raw = (e.target as HTMLInputElement).value
+                  if (raw === '') { configStore.temperature = null; return }
+                  const v = Number(raw)
                   configStore.temperature = Number.isFinite(v) ? Math.min(2, Math.max(0, v)) : 0.7
                 }"
               />
-              <div class="flex items-center justify-between gap-3 mt-2">
-                <span class="text-body-sm" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('configOmitTemperature') }}</span>
-                <BaseSwitch v-model="configStore.omitTemperature" :aria-label="i18n.t('configOmitTemperature')" />
-              </div>
             </div>
             <div>
               <label class="text-label-md block">{{ i18n.t('configReasoningEffort') }}</label>
