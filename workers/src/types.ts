@@ -42,6 +42,17 @@ export interface ExamParams {
   max_tokens?: number
 }
 
+export interface AIRequestOptions {
+  max_tokens?: number
+  token_parameter?: string
+  temperature?: number
+  omit_temperature?: boolean
+  reasoning_effort?: string
+  extra_prompt?: string
+  retries?: number
+  timeout_seconds?: number
+}
+
 export interface AIConfigData {
   endpoint?: string
   api_key?: string

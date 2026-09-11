@@ -1,4 +1,5 @@
 import type { AIConfig, AnswerResult, ExamParams, ExplainParams, ExplainResult, JudgeParams, JudgeResult, ModelInfo, Question } from '@exameow/shared'
+import { resolveAIOptions } from '@exameow/shared'
 import { AVAILABLE_CF_MODELS } from './cf-models'
 
 export interface GenerateResult {
@@ -33,6 +34,7 @@ export const cfApi = {
     }
     formData.append('params', JSON.stringify(params))
     formData.append('model', config.model)
+    formData.append('options', JSON.stringify(resolveAIOptions(config)))
 
     const res = await fetch(`${getBaseUrl()}/api/generate`, {
       method: 'POST',
@@ -87,7 +89,7 @@ export const cfApi = {
     const res = await fetch(`${getBaseUrl()}/api/answer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, language, model: config.model }),
+      body: JSON.stringify({ question, language, model: config.model, options: resolveAIOptions(config) }),
       signal,
     })
     if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
@@ -110,6 +112,7 @@ export const cfApi = {
         user_answer: params.user_answer,
         language,
         model: config.model,
+        options: resolveAIOptions(config),
       }),
       signal,
     })
@@ -132,6 +135,7 @@ export const cfApi = {
         analysis: params.analysis,
         language,
         model: config.model,
+        options: resolveAIOptions(config),
       }),
       signal,
     })

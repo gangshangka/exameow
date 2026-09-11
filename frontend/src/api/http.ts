@@ -1,4 +1,5 @@
-import type { AIConfig, AnswerResult, ExamParams, ExplainParams, ExplainResult, JudgeParams, JudgeResult, ModelInfo, Question } from '@exameow/shared'
+import type { AIConfig, AIRequestOptions, AnswerResult, ExamParams, ExplainParams, ExplainResult, JudgeParams, JudgeResult, ModelInfo, Question } from '@exameow/shared'
+import { resolveAIOptions } from '@exameow/shared'
 
 const BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -32,6 +33,7 @@ export const httpApi = {
     formData.append('endpoint', config.endpoint)
     formData.append('api_key', config.api_key)
     formData.append('model', config.model)
+    formData.append('options', JSON.stringify(resolveAIOptions(config)))
 
     const res = await fetch(`${BASE_URL}/api/generate`, {
       method: 'POST',
@@ -84,6 +86,7 @@ export const httpApi = {
         endpoint: config.endpoint,
         api_key: config.api_key,
         model: config.model,
+        options: resolveAIOptions(config),
       }),
       signal,
     })
@@ -109,6 +112,7 @@ export const httpApi = {
         endpoint: config.endpoint,
         api_key: config.api_key,
         model: config.model,
+        options: resolveAIOptions(config),
       }),
       signal,
     })
@@ -133,6 +137,7 @@ export const httpApi = {
         endpoint: config.endpoint,
         api_key: config.api_key,
         model: config.model,
+        options: resolveAIOptions(config),
       }),
       signal,
     })

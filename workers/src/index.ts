@@ -8,7 +8,7 @@ import { judgeAnswer } from './judge'
 import { explainQuestion } from './explain'
 import { parseFile } from './parser'
 import { generateXlsxBuffer, generateCsvContent } from './export'
-import { Question, ExamParams, AVAILABLE_CF_MODELS } from './types'
+import { Question, ExamParams, AVAILABLE_CF_MODELS, AIRequestOptions } from './types'
 
 type Bindings = {
   AI: Ai
@@ -85,6 +85,7 @@ app.post('/api/generate', async (c) => {
   let fileName = 'unknown'
   let paramsJson = ''
   let model = ''
+  let optionsJson = ''
 
   try {
     const formData = await c.req.formData()
@@ -103,6 +104,11 @@ app.post('/api/generate', async (c) => {
     const modelField = formData.get('model')
     if (typeof modelField === 'string') {
       model = modelField
+    }
+
+    const optionsField = formData.get('options')
+    if (typeof optionsField === 'string') {
+      optionsJson = optionsField
     }
   } catch (err) {
     return c.json({ error: `Failed to parse form data: ${err}` }, 400)
@@ -138,8 +144,16 @@ app.post('/api/generate', async (c) => {
   }
 
   let questions: Question[]
+  let options: AIRequestOptions | undefined
+  if (optionsJson.trim()) {
+    try {
+      options = JSON.parse(optionsJson)
+    } catch {
+      return c.json({ error: 'Invalid options JSON' }, 400)
+    }
+  }
   try {
-    questions = await generateExam(c.env.AI, text, params, model || undefined)
+    questions = await generateExam(c.env.AI, text, params, model || undefined, options)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('AI generation error:', msg)
@@ -151,7 +165,7 @@ app.post('/api/generate', async (c) => {
 
 // POST /api/answer - answers a user question via AI
 app.post('/api/answer', async (c) => {
-  let body: { question?: string; language?: string; model?: string }
+  let body: { question?: string; language?: string; model?: string; options?: AIRequestOptions }
   try {
     body = await c.req.json()
   } catch {
@@ -168,7 +182,8 @@ app.post('/api/answer', async (c) => {
       c.env.AI,
       question,
       body.language || 'Chinese',
-      body.model || undefined
+      body.model || undefined,
+      body.options
     )
     return c.json(result)
   } catch (err) {
@@ -187,6 +202,7 @@ app.post('/api/judge', async (c) => {
     user_answer?: string
     language?: string
     model?: string
+    options?: AIRequestOptions
   }
   try {
     body = await c.req.json()
@@ -207,7 +223,7 @@ app.post('/api/judge', async (c) => {
       userAnswer,
       language: body.language || 'Chinese',
       model: body.model || undefined,
-    })
+    }, body.options)
     return c.json(result)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -224,6 +240,7 @@ app.post('/api/explain', async (c) => {
     analysis?: string
     language?: string
     model?: string
+    options?: AIRequestOptions
   }
   try {
     body = await c.req.json()
@@ -243,7 +260,7 @@ app.post('/api/explain', async (c) => {
       analysis: body.analysis || '',
       language: body.language || 'Chinese',
       model: body.model || undefined,
-    })
+    }, body.options)
     return c.json(result)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

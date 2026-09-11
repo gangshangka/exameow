@@ -1,11 +1,6 @@
-import type { ExamParams, Question, QuestionType, Difficulty } from '@exameow/shared'
-import { normalizeEndpoint } from '@/utils/endpoint'
-
-interface AIConfig {
-  endpoint: string
-  api_key: string
-  model: string
-}
+import type { AIConfig, ExamParams, Question, QuestionType, Difficulty } from '@exameow/shared'
+import { resolveAIOptions } from '@exameow/shared'
+import { chatRequest } from './chatRequest'
 
 export function buildSystemPrompt(autoChapter = false): string {
   const questionTypes = [
@@ -142,37 +137,13 @@ export async function callCustomAI(
   config: AIConfig,
   signal?: AbortSignal,
 ): Promise<Question[]> {
-  const endpoint = normalizeEndpoint(config.endpoint)
-  const url = `${endpoint}/chat/completions`
-
-  const body: Record<string, unknown> = {
-    model: config.model,
-    messages: [
-      { role: 'system', content: buildSystemPrompt(params.auto_chapter) },
-      { role: 'user', content: buildUserPrompt(text, params) },
-    ],
-    temperature: 0.7,
-  }
-  if (typeof params.max_tokens === 'number') body.max_tokens = params.max_tokens
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.api_key}`,
-    },
-    body: JSON.stringify(body),
+  const content = await chatRequest(
+    buildSystemPrompt(params.auto_chapter),
+    buildUserPrompt(text, params),
+    config,
+    resolveAIOptions(config),
     signal,
-  })
-
-  if (!res.ok) {
-    const errBody = await res.text().catch(() => '')
-    throw new Error(`AI API error ${res.status}: ${errBody}`)
-  }
-
-  const json = await res.json()
-  const content = json.choices?.[0]?.message?.content
-  if (!content) throw new Error('AI returned empty response')
+  )
 
   return normalizeQuestionDifficulty(parseQuestions(content), params.difficulty)
 }

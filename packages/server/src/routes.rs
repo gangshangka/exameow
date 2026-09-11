@@ -4,7 +4,7 @@ use axum::{
     response::Response,
     Json,
 };
-use exameow_core::ai::{AIClient, ModelInfo};
+use exameow_core::ai::{AIClient, AIRequestOptions, ModelInfo};
 use exameow_core::config::{AIConfigData, ConfigStore};
 use exameow_core::exam::{
     answer_question, explain_question, generate_exam, judge_answer, AnswerResult, ExamParams, ExplainResult, JudgeResult, Question,
@@ -75,6 +75,7 @@ pub async fn generate_exam_handler(
     let mut endpoint = String::new();
     let mut api_key = String::new();
     let mut model = String::new();
+    let mut options_json = String::new();
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
@@ -109,6 +110,12 @@ pub async fn generate_exam_handler(
             }
             "model" => {
                 model = field
+                    .text()
+                    .await
+                    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
+            }
+            "options" => {
+                options_json = field
                     .text()
                     .await
                     .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
@@ -156,7 +163,16 @@ pub async fn generate_exam_handler(
         }
     };
 
-    let client = AIClient::new(&endpoint, &api_key);
+    let options: Option<AIRequestOptions> = if options_json.trim().is_empty() {
+        None
+    } else {
+        serde_json::from_str(&options_json)
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid options: {e}")))?
+    };
+
+    let client = AIClient::new(&endpoint, &api_key)
+        .with_options(options)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid AI options: {e}")))?;
     let questions = generate_exam(&client, &text, &params, &model)
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, format!("AI error: {e}")))?;
@@ -209,7 +225,7 @@ pub async fn save_config_handler(
 ) -> Result<StatusCode, (StatusCode, String)> {
     _state
         .config_store
-        .save(&config.endpoint, &config.api_key, &config.model, config.max_tokens)
+        .save(&config)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Save error: {e}")))?;
     Ok(StatusCode::OK)
 }
@@ -231,6 +247,7 @@ pub struct AnswerRequest {
     pub endpoint: Option<String>,
     pub api_key: Option<String>,
     pub model: Option<String>,
+    pub options: Option<AIRequestOptions>,
 }
 
 pub async fn answer_handler(
@@ -259,7 +276,9 @@ pub async fn answer_handler(
 
     let language = req.language.filter(|s| !s.is_empty()).unwrap_or_else(|| "Chinese".to_string());
 
-    let client = AIClient::new(&endpoint, &api_key);
+    let client = AIClient::new(&endpoint, &api_key)
+        .with_options(req.options)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid AI options: {e}")))?;
     let result = answer_question(&client, &req.question, &language, &model)
         .await
         .map_err(|e| (StatusCode::BAD_GATEWAY, format!("AI error: {e}")))?;
@@ -276,6 +295,7 @@ pub struct JudgeRequest {
     pub endpoint: Option<String>,
     pub api_key: Option<String>,
     pub model: Option<String>,
+    pub options: Option<AIRequestOptions>,
 }
 
 pub async fn judge_handler(
@@ -305,7 +325,9 @@ pub async fn judge_handler(
     let language = req.language.filter(|s| !s.is_empty()).unwrap_or_else(|| "Chinese".to_string());
     let analysis = req.analysis.unwrap_or_default();
 
-    let client = AIClient::new(&endpoint, &api_key);
+    let client = AIClient::new(&endpoint, &api_key)
+        .with_options(req.options)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid AI options: {e}")))?;
     let result = judge_answer(
         &client,
         &req.stem,
@@ -329,6 +351,7 @@ pub struct ExplainRequest {
     pub endpoint: Option<String>,
     pub api_key: Option<String>,
     pub model: Option<String>,
+    pub options: Option<AIRequestOptions>,
 }
 
 pub async fn explain_handler(
@@ -358,7 +381,9 @@ pub async fn explain_handler(
     let language = req.language.filter(|s| !s.is_empty()).unwrap_or_else(|| "Chinese".to_string());
     let analysis = req.analysis.unwrap_or_default();
 
-    let client = AIClient::new(&endpoint, &api_key);
+    let client = AIClient::new(&endpoint, &api_key)
+        .with_options(req.options)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid AI options: {e}")))?;
     let result = explain_question(
         &client,
         &req.stem,
