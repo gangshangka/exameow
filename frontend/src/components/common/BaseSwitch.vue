@@ -14,6 +14,7 @@ function toggle() {
 }
 
 function onKeydown(e: KeyboardEvent) {
+  if (e.repeat) return
   if (e.key === ' ' || e.key === 'Enter') {
     e.preventDefault()
     toggle()
@@ -28,7 +29,7 @@ function onKeydown(e: KeyboardEvent) {
     :aria-checked="modelValue"
     :aria-disabled="disabled || undefined"
     :disabled="disabled"
-    class="group relative inline-flex shrink-0 items-center w-[52px] h-8 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[rgb(var(--md-primary))] transition-colors duration-200 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+    class="group relative inline-flex shrink-0 items-center w-[52px] h-8 rounded-full outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[rgb(var(--md-primary))] transition-colors duration-200 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
     :style="{
       backgroundColor: modelValue ? 'rgb(var(--md-primary))' : 'rgb(var(--md-surface-container-highest))',
       border: modelValue ? '2px solid rgb(var(--md-primary))' : '2px solid rgb(var(--md-outline))',

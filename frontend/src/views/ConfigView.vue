@@ -198,6 +198,7 @@ async function handleSave() {
         type="button"
         class="w-full flex items-center gap-3 -mx-2 px-2 py-1 rounded-2xl text-left transition-colors hover:bg-[rgb(var(--md-on-surface-variant)/0.08)] cursor-pointer"
         :aria-expanded="advancedOpen"
+        aria-controls="advanced-ai-panel"
         @click="advancedOpen = !advancedOpen"
       >
         <AdjustmentsHorizontalIcon class="w-5 h-5 shrink-0" style="color: rgb(var(--md-on-surface-variant))" />
@@ -210,7 +211,7 @@ async function handleSave() {
       </button>
 
       <Transition name="scale">
-        <div v-if="advancedOpen">
+        <div v-if="advancedOpen" id="advanced-ai-panel">
           <p class="text-body-sm mt-3 mb-4" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('configAdvancedAIHint') }}</p>
 
           <!-- 输出上限 -->
