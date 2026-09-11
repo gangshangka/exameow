@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
-import type { AIConfig, ModelInfo } from '@exameow/shared'
+import type { AIConfig, ModelInfo, ReasoningEffort, TokenParameter } from '@exameow/shared'
 import { api } from '@/api'
 import { isCloudflare, isTauri } from '@/utils/platform'
 import type { ServerConfigInfo } from '@/api/http'
@@ -16,6 +16,13 @@ export const useConfigStore = defineStore('config', () => {
   const apiKey = ref('')
   const model = ref('')
   const maxTokens = ref<number | null>(null)
+  const tokenParameter = ref<TokenParameter>('max_tokens')
+  const temperature = ref(0.7)
+  const omitTemperature = ref(false)
+  const reasoningEffort = ref<ReasoningEffort | ''>('')
+  const extraPrompt = ref('')
+  const retries = ref(0)
+  const timeoutSeconds = ref<number | null>(null)
   const models = ref<ModelInfo[]>([])
   const loading = ref(false)
   const aiProvider = ref<AIProvider>('cf-free')
@@ -41,6 +48,13 @@ export const useConfigStore = defineStore('config', () => {
       if (saved.api_key) apiKey.value = saved.api_key
       model.value = saved.model
       maxTokens.value = typeof saved.max_tokens === 'number' ? saved.max_tokens : null
+      tokenParameter.value = saved.token_parameter === 'max_completion_tokens' ? 'max_completion_tokens' : 'max_tokens'
+      omitTemperature.value = saved.omit_temperature === true
+      if (typeof saved.temperature === 'number') temperature.value = saved.temperature
+      reasoningEffort.value = saved.reasoning_effort ?? ''
+      extraPrompt.value = saved.extra_prompt ?? ''
+      retries.value = typeof saved.retries === 'number' ? saved.retries : 0
+      timeoutSeconds.value = typeof saved.timeout_seconds === 'number' ? saved.timeout_seconds : null
     }
     if (isCloudflare()) {
       const provider = localStorage.getItem('exameow_ai_provider')
@@ -111,19 +125,30 @@ export const useConfigStore = defineStore('config', () => {
       return
     }
     endpoint.value = normalizeEndpoint(endpoint.value)
-    await api.saveConfig({
+    await api.saveConfig(buildConfig())
+  }
+
+  function buildConfig(): AIConfig {
+    return {
       endpoint: endpoint.value,
       api_key: apiKey.value,
       model: model.value,
       max_tokens: maxTokens.value ?? undefined,
-    })
+      token_parameter: tokenParameter.value,
+      temperature: temperature.value,
+      omit_temperature: omitTemperature.value,
+      reasoning_effort: reasoningEffort.value || undefined,
+      extra_prompt: extraPrompt.value.trim() || undefined,
+      retries: retries.value,
+      timeout_seconds: timeoutSeconds.value ?? undefined,
+    }
   }
 
   function getConfig(): AIConfig {
     if (!isCloudflare() && !isTauri() && aiProvider.value === 'server') {
-      return { endpoint: '', api_key: '', model: model.value, max_tokens: maxTokens.value ?? undefined }
+      return { ...buildConfig(), endpoint: '', api_key: '' }
     }
-    return { endpoint: endpoint.value, api_key: apiKey.value, model: model.value, max_tokens: maxTokens.value ?? undefined }
+    return buildConfig()
   }
 
   function setProvider(provider: AIProvider) {
@@ -137,5 +162,5 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
-  return { endpoint, apiKey, model, maxTokens, models, loading, configured, aiProvider, serverInfo, loadSaved, fetchModels, save, getConfig, setProvider }
+  return { endpoint, apiKey, model, maxTokens, tokenParameter, temperature, omitTemperature, reasoningEffort, extraPrompt, retries, timeoutSeconds, models, loading, configured, aiProvider, serverInfo, loadSaved, fetchModels, save, getConfig, setProvider }
 })

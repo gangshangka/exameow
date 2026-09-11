@@ -1368,7 +1368,7 @@ dependencies = [
 
 [[package]]
 name = "exameow"
-version = "1.4.5"
+version = "1.6.0"
 dependencies = [
  "base64 0.22.1",
  "exameow-core",
@@ -1390,6 +1390,7 @@ dependencies = [
  "tauri-plugin-screenrecord",
  "tauri-plugin-sharekit",
  "tauri-plugin-updater",
+ "tokio",
  "xcap",
 ]
 

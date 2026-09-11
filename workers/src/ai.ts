@@ -1,11 +1,38 @@
 import { Ai } from '@cloudflare/workers-types'
-import { DEFAULT_MODEL } from './types'
+import { DEFAULT_MODEL, type AIRequestOptions } from './types'
+
+export interface AIChatOverrides {
+  maxTokens?: number
+  temperature?: number
+  omitTemperature?: boolean
+  extraPrompt?: string
+}
+
+/** Map cross-backend AIRequestOptions to the subset CF Workers AI understands. */
+export function aiChatOverrides(options?: AIRequestOptions): AIChatOverrides {
+  if (!options) return {}
+  return {
+    maxTokens: typeof options.max_tokens === 'number' ? options.max_tokens : undefined,
+    temperature: typeof options.temperature === 'number' ? options.temperature : undefined,
+    omitTemperature: options.omit_temperature === true,
+    extraPrompt: typeof options.extra_prompt === 'string' ? options.extra_prompt : undefined,
+  }
+}
 
 interface AIChatInput {
   model?: string
   systemPrompt: string
   userPrompt: string
   maxTokens?: number
+  temperature?: number
+  omitTemperature?: boolean
+  extraPrompt?: string
+}
+
+function withExtraPrompt(system: string, extra?: string): string {
+  const trimmed = extra?.trim()
+  if (!trimmed) return system
+  return `${system}\n\n## Additional Instructions (user-provided, highest priority)\n${trimmed}\n\n## Follow the required output format above.`
 }
 
 function isReadableStream(value: unknown): value is ReadableStream {
@@ -63,11 +90,13 @@ export async function aiChat(
 
   const options: Record<string, unknown> = {
     messages: [
-      { role: 'system', content: input.systemPrompt },
+      { role: 'system', content: withExtraPrompt(input.systemPrompt, input.extraPrompt) },
       { role: 'user', content: input.userPrompt },
     ],
-    temperature: 0.7,
     stream: false,
+  }
+  if (!input.omitTemperature) {
+    options.temperature = typeof input.temperature === 'number' ? input.temperature : 0.7
   }
   options.max_tokens = typeof input.maxTokens === 'number' ? input.maxTokens : 16384
 

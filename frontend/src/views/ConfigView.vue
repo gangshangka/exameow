@@ -178,23 +178,88 @@ async function handleSave() {
       </div>
     </div>
 
-    <!-- Response Max Tokens (optional) -->
-    <div class="card-filled p-5 sm:p-6 mb-4 shadow-sm border border-[rgb(var(--md-outline-variant)/0.3)]">
-      <label class="text-label-md font-semibold block mb-3" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('configMaxTokens') }}</label>
-      <input
-        :value="configStore.maxTokens ?? ''"
-        type="number"
-        min="1"
-        step="1"
-        class="input-outlined text-sm !py-3 !rounded-xl"
-        :placeholder="i18n.t('configMaxTokensHint')"
-        @input="(e: Event) => {
-          const v = (e.target as HTMLInputElement).value
-          configStore.maxTokens = v === '' ? null : Math.max(1, Math.floor(Number(v)) || 1)
-        }"
-      />
-      <p class="text-body-sm mt-2" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('configMaxTokensHint') }}</p>
-    </div>
+    <!-- Advanced AI settings (includes response max tokens) -->
+    <details class="card-filled p-5 sm:p-6 mb-4 shadow-sm border border-[rgb(var(--md-outline-variant)/0.3)]">
+      <summary class="cursor-pointer text-label-md font-semibold" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('configAdvancedAI') }}</summary>
+      <p class="text-body-sm mt-3 mb-4" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('configAdvancedAIHint') }}</p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <label class="text-label-md block">{{ i18n.t('configMaxTokens') }}
+          <input
+            :value="configStore.maxTokens ?? ''"
+            type="number"
+            min="1"
+            step="1"
+            class="input-outlined w-full mt-2 text-sm"
+            :placeholder="i18n.t('configMaxTokensHint')"
+            @input="(e: Event) => {
+              const v = (e.target as HTMLInputElement).value
+              configStore.maxTokens = v === '' ? null : Math.max(1, Math.floor(Number(v)) || 1)
+            }"
+          />
+        </label>
+        <label class="text-label-md block">{{ i18n.t('configTokenParameter') }}
+          <select v-model="configStore.tokenParameter" class="input-outlined w-full mt-2">
+            <option value="max_tokens">max_tokens</option>
+            <option value="max_completion_tokens">max_completion_tokens</option>
+          </select>
+        </label>
+        <div>
+          <label class="text-label-md block">{{ i18n.t('configTemperature') }}</label>
+          <input
+            :value="configStore.temperature"
+            type="number"
+            min="0"
+            max="2"
+            step="0.1"
+            :disabled="configStore.omitTemperature"
+            class="input-outlined w-full mt-2 text-sm disabled:opacity-50"
+            @input="(e: Event) => {
+              const v = Number((e.target as HTMLInputElement).value)
+              configStore.temperature = Number.isFinite(v) ? Math.min(2, Math.max(0, v)) : 0.7
+            }"
+          />
+          <label class="flex items-center gap-2 mt-2 text-body-sm" style="color: rgb(var(--md-on-surface-variant))">
+            <input type="checkbox" v-model="configStore.omitTemperature" class="h-4 w-4 accent-primary" />
+            {{ i18n.t('configOmitTemperature') }}
+          </label>
+        </div>
+        <label class="text-label-md block">{{ i18n.t('configReasoningEffort') }}
+          <select v-model="configStore.reasoningEffort" class="input-outlined w-full mt-2">
+            <option value="">{{ i18n.t('configReasoningDefault') }}</option>
+            <option v-for="effort in ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'none']" :key="effort" :value="effort">{{ effort }}</option>
+          </select>
+        </label>
+        <label class="text-label-md block">{{ i18n.t('configRetries') }}
+          <input v-model.number="configStore.retries" type="number" min="0" max="5" step="1" class="input-outlined w-full mt-2 text-sm" />
+        </label>
+        <label class="text-label-md block">{{ i18n.t('configTimeout') }}
+          <input
+            :value="configStore.timeoutSeconds ?? ''"
+            type="number"
+            min="1"
+            max="3600"
+            step="1"
+            class="input-outlined w-full mt-2 text-sm"
+            @input="(e: Event) => {
+              const v = (e.target as HTMLInputElement).value
+              configStore.timeoutSeconds = v === '' ? null : Math.min(3600, Math.max(1, Math.floor(Number(v)) || 1))
+            }"
+          />
+        </label>
+      </div>
+
+      <label class="text-label-md block mt-4">{{ i18n.t('configExtraPrompt') }}
+        <textarea
+          v-model="configStore.extraPrompt"
+          maxlength="20000"
+          rows="4"
+          class="input-outlined w-full mt-2 text-sm"
+          :placeholder="i18n.t('configExtraPromptHint')"
+        />
+      </label>
+      <p class="text-body-sm mt-3" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('configRetryHint') }}</p>
+    </details>
 
     <Transition name="scale">
       <div

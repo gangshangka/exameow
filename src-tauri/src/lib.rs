@@ -1,5 +1,6 @@
-use exameow_core::ai::{AIClient, ModelInfo};
+use exameow_core::ai::{AIClient, AIRequestOptions, ModelInfo};
 use exameow_core::config::{AIConfigData, ConfigStore};
+use exameow_core::error::CoreError;
 use exameow_core::exam::{
     answer_question as core_answer_question, explain_question as core_explain_question,
     generate_exam as core_generate_exam,
@@ -10,8 +11,11 @@ use exameow_core::export::export_xlsx as core_export_xlsx;
 use exameow_core::parser::parse_file;
 use serde::Serialize;
 use std::fmt;
+use std::future::Future;
 
+mod ai_requests;
 mod ota;
+use ai_requests::AiRequestRegistry;
 #[cfg(target_os = "macos")]
 fn make_webview_transparent(win: &tauri::WebviewWindow) {
     use objc::runtime::{Class, Object, NO};
@@ -74,11 +78,14 @@ async fn get_models(endpoint: String, api_key: String) -> Result<Vec<ModelInfo>,
 
 #[tauri::command]
 async fn generate_exam(
+    registry: tauri::State<'_, AiRequestRegistry>,
     file_path: String,
     params_json: String,
     endpoint: String,
     api_key: String,
     model: String,
+    options: Option<AIRequestOptions>,
+    request_id: Option<String>,
 ) -> Result<GenerateResult, CommandError> {
     let params: ExamParams = serde_json::from_str(&params_json)
         .map_err(|e| CommandError(format!("Invalid params JSON: {e}")))?;
@@ -89,33 +96,49 @@ async fn generate_exam(
         parse_file(&file_path).map_err(|e| CommandError(format!("File parse error: {e}")))?
     };
 
-    let client = AIClient::new(&endpoint, &api_key);
-    let questions = core_generate_exam(&client, &text, &params, &model)
-        .await
-        .map_err(|e| CommandError(format!("Exam generation error: {e}")))?;
+    let client = AIClient::new(&endpoint, &api_key)
+        .with_options(options)
+        .map_err(|e| CommandError(format!("Invalid AI options: {e}")))?;
+    let questions = run_cancellable(
+        &registry,
+        request_id,
+        core_generate_exam(&client, &text, &params, &model),
+    )
+    .await
+    .map_err(|e| CommandError(format!("Exam generation error: {e}")))?;
 
     Ok(GenerateResult { questions })
 }
 
 #[tauri::command]
 async fn answer_question(
+    registry: tauri::State<'_, AiRequestRegistry>,
     question: String,
     language: String,
     endpoint: String,
     api_key: String,
     model: String,
+    options: Option<AIRequestOptions>,
+    request_id: Option<String>,
 ) -> Result<AnswerResult, CommandError> {
     if question.trim().is_empty() {
         return Err(CommandError("Question is empty".to_string()));
     }
-    let client = AIClient::new(&endpoint, &api_key);
-    core_answer_question(&client, &question, &language, &model)
-        .await
-        .map_err(|e| CommandError(format!("Answer error: {e}")))
+    let client = AIClient::new(&endpoint, &api_key)
+        .with_options(options)
+        .map_err(|e| CommandError(format!("Invalid AI options: {e}")))?;
+    run_cancellable(
+        &registry,
+        request_id,
+        core_answer_question(&client, &question, &language, &model),
+    )
+    .await
+    .map_err(|e| CommandError(format!("Answer error: {e}")))
 }
 
 #[tauri::command]
 async fn judge_answer(
+    registry: tauri::State<'_, AiRequestRegistry>,
     stem: String,
     reference_answer: String,
     analysis: String,
@@ -124,19 +147,27 @@ async fn judge_answer(
     endpoint: String,
     api_key: String,
     model: String,
+    options: Option<AIRequestOptions>,
+    request_id: Option<String>,
 ) -> Result<JudgeResult, CommandError> {
     if user_answer.trim().is_empty() {
         return Err(CommandError("User answer is empty".to_string()));
     }
-    let client = AIClient::new(&endpoint, &api_key);
-    core_judge_answer(
-        &client,
-        &stem,
-        &reference_answer,
-        &analysis,
-        &user_answer,
-        &language,
-        &model,
+    let client = AIClient::new(&endpoint, &api_key)
+        .with_options(options)
+        .map_err(|e| CommandError(format!("Invalid AI options: {e}")))?;
+    run_cancellable(
+        &registry,
+        request_id,
+        core_judge_answer(
+            &client,
+            &stem,
+            &reference_answer,
+            &analysis,
+            &user_answer,
+            &language,
+            &model,
+        ),
     )
     .await
     .map_err(|e| CommandError(format!("Judge error: {e}")))
@@ -144,6 +175,7 @@ async fn judge_answer(
 
 #[tauri::command]
 async fn explain_question(
+    registry: tauri::State<'_, AiRequestRegistry>,
     stem: String,
     reference_answer: String,
     analysis: String,
@@ -151,14 +183,50 @@ async fn explain_question(
     endpoint: String,
     api_key: String,
     model: String,
+    options: Option<AIRequestOptions>,
+    request_id: Option<String>,
 ) -> Result<ExplainResult, CommandError> {
     if stem.trim().is_empty() {
         return Err(CommandError("Question is empty".to_string()));
     }
-    let client = AIClient::new(&endpoint, &api_key);
-    core_explain_question(&client, &stem, &reference_answer, &analysis, &language, &model)
-        .await
-        .map_err(|e| CommandError(format!("Explain error: {e}")))
+    let client = AIClient::new(&endpoint, &api_key)
+        .with_options(options)
+        .map_err(|e| CommandError(format!("Invalid AI options: {e}")))?;
+    run_cancellable(
+        &registry,
+        request_id,
+        core_explain_question(&client, &stem, &reference_answer, &analysis, &language, &model),
+    )
+    .await
+    .map_err(|e| CommandError(format!("Explain error: {e}")))
+}
+
+/// Run an AI future, aborting it early if the frontend cancels the request id.
+async fn run_cancellable<T, F>(
+    registry: &AiRequestRegistry,
+    request_id: Option<String>,
+    fut: F,
+) -> Result<T, CoreError>
+where
+    F: Future<Output = Result<T, CoreError>>,
+{
+    match request_id {
+        Some(id) => {
+            let receiver = registry.register(id.clone());
+            let outcome = tokio::select! {
+                res = fut => res,
+                _ = receiver => Err(CoreError::AI("Cancelled".to_string())),
+            };
+            registry.unregister(&id);
+            outcome
+        }
+        None => fut.await,
+    }
+}
+
+#[tauri::command]
+fn cancel_ai_request(registry: tauri::State<'_, AiRequestRegistry>, request_id: String) -> bool {
+    registry.cancel(&request_id)
 }
 
 #[tauri::command]
@@ -281,16 +349,11 @@ fn save_to_downloads(
 }
 
 #[tauri::command]
-fn save_config(
-    endpoint: String,
-    api_key: String,
-    model: String,
-    max_tokens: Option<u32>,
-) -> Result<(), CommandError> {
+fn save_config(config: AIConfigData) -> Result<(), CommandError> {
     let store = ConfigStore::new(APP_NAME)
         .map_err(|e| CommandError(format!("Config init error: {e}")))?;
     store
-        .save(&endpoint, &api_key, &model, max_tokens)
+        .save(&config)
         .map_err(|e| CommandError(format!("Config save error: {e}")))
 }
 
@@ -659,6 +722,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
     builder
+        .manage(AiRequestRegistry::new())
         .setup(|app| {
             let config = &app.config().app.windows[0];
             let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?;
@@ -692,6 +756,7 @@ pub fn run() {
             answer_question,
             judge_answer,
             explain_question,
+            cancel_ai_request,
             parse_file_text,
             parse_file_bytes,
             export_csv,

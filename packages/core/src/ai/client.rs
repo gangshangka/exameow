@@ -1,9 +1,10 @@
 use crate::error::CoreError;
 use super::models::{ModelInfo, ModelsResponse};
+use super::options::AIRequestOptions;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 
 /// AI 请求超时(秒),默认 600s 以兼容响应较慢的自托管网关/大文档生成;
-/// 可通过环境变量 AI_TIMEOUT_SECS 覆盖。
+/// 可通过环境变量 AI_TIMEOUT_SECS 覆盖。请求级 options.timeout_seconds 优先。
 fn ai_timeout_secs() -> u64 {
     std::env::var("AI_TIMEOUT_SECS")
         .ok()
@@ -15,6 +16,7 @@ pub struct AIClient {
     client: reqwest::Client,
     endpoint: String,
     api_key: String,
+    options: Option<AIRequestOptions>,
 }
 
 impl AIClient {
@@ -34,7 +36,16 @@ impl AIClient {
             client,
             endpoint,
             api_key: api_key.to_string(),
+            options: None,
         }
+    }
+
+    pub fn with_options(mut self, options: Option<AIRequestOptions>) -> Result<Self, CoreError> {
+        if let Some(ref options) = options {
+            options.validate()?;
+        }
+        self.options = options;
+        Ok(self)
     }
 
     pub async fn fetch_models(&self) -> Result<Vec<ModelInfo>, CoreError> {
@@ -119,31 +130,74 @@ impl AIClient {
     }
 
     async fn post_chat(&self, body: serde_json::Value) -> Result<String, CoreError> {
+        let mut body = body;
+        if let Some(options) = self.options.as_ref() {
+            options.apply(&mut body);
+        }
+        let retries = self.options.as_ref().map(|o| o.retries).unwrap_or(0);
+        let timeout = self
+            .options
+            .as_ref()
+            .and_then(|o| o.timeout_seconds)
+            .unwrap_or_else(ai_timeout_secs);
+
+        let mut last_error: Option<CoreError> = None;
+        for attempt in 0..=retries {
+            match self.post_chat_once(&body, timeout).await {
+                Ok(content) => return Ok(content),
+                Err((error, retryable)) => {
+                    if !retryable || attempt == retries {
+                        return Err(error);
+                    }
+                    last_error = Some(error);
+                    tokio::time::sleep(std::time::Duration::from_secs(u64::from(attempt + 1))).await;
+                }
+            }
+        }
+        Err(last_error.unwrap_or_else(|| CoreError::AI("request failed".to_string())))
+    }
+
+    async fn post_chat_once(
+        &self,
+        body: &serde_json::Value,
+        timeout_secs: u64,
+    ) -> Result<String, (CoreError, bool)> {
+        fn transport_error(error: reqwest::Error) -> (CoreError, bool) {
+            let retryable = error.is_timeout() || error.is_connect() || error.is_body();
+            (error.into(), retryable)
+        }
+
         let url = format!("{}/chat/completions", self.endpoint);
         let response = self
             .client
             .post(&url)
             .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
             .header(CONTENT_TYPE, "application/json")
-            .json(&body)
-            .timeout(std::time::Duration::from_secs(ai_timeout_secs()))
+            .json(body)
+            .timeout(std::time::Duration::from_secs(timeout_secs))
             .send()
-            .await?;
+            .await
+            .map_err(transport_error)?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(CoreError::AI(format!("HTTP {status}: {body}")));
+        let status = response.status();
+        let text = response.text().await.map_err(transport_error)?;
+
+        if !status.is_success() {
+            let retryable = status.as_u16() == 408
+                || status.as_u16() == 429
+                || status.is_server_error();
+            return Err((CoreError::AI(format!("HTTP {status}: {text}")), retryable));
         }
 
-        let json: serde_json::Value = response.json().await?;
+        let json: serde_json::Value =
+            serde_json::from_str(&text).map_err(|e| (e.into(), false))?;
         let content = json["choices"][0]["message"]["content"]
             .as_str()
             .unwrap_or("")
             .to_string();
 
-        if content.is_empty() {
-            return Err(CoreError::AI("empty response from AI".to_string()));
+        if content.trim().is_empty() {
+            return Err((CoreError::AI("empty response from AI".to_string()), false));
         }
         Ok(content)
     }

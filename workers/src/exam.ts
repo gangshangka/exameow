@@ -1,21 +1,24 @@
 import { Ai } from '@cloudflare/workers-types'
-import { aiChat } from './ai'
-import { ExamParams, Question, QuestionType, Difficulty } from './types'
+import { aiChat, aiChatOverrides } from './ai'
+import { ExamParams, Question, QuestionType, Difficulty, type AIRequestOptions } from './types'
 
 export async function generateExam(
   ai: Ai,
   text: string,
   params: ExamParams,
-  model?: string
+  model?: string,
+  options?: AIRequestOptions
 ): Promise<Question[]> {
   const systemPrompt = buildSystemPrompt(params.auto_chapter)
   const docText = params.text || text
   const userPrompt = buildUserPrompt(docText, params)
+  const overrides = aiChatOverrides(options)
   const response = await aiChat(ai, {
     model,
     systemPrompt,
     userPrompt,
-    maxTokens: params.max_tokens,
+    ...overrides,
+    maxTokens: overrides.maxTokens ?? params.max_tokens,
   })
   console.log('AI response preview:', response.substring(0, 200))
   return normalizeQuestionDifficulty(parseQuestions(response), params.difficulty)

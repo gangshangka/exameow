@@ -86,11 +86,33 @@ export interface ExamParams {
   max_tokens?: number
 }
 
+export type TokenParameter = 'max_tokens' | 'max_completion_tokens'
+
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'none'
+
 export interface AIConfig {
   endpoint: string
   api_key: string
   model: string
   max_tokens?: number
+  token_parameter?: TokenParameter
+  temperature?: number
+  omit_temperature?: boolean
+  reasoning_effort?: ReasoningEffort
+  extra_prompt?: string
+  retries?: number
+  timeout_seconds?: number
+}
+
+export interface AIRequestOptions {
+  max_tokens?: number
+  token_parameter: TokenParameter
+  temperature?: number
+  omit_temperature: boolean
+  reasoning_effort?: ReasoningEffort
+  extra_prompt?: string
+  retries: number
+  timeout_seconds?: number
 }
 
 export interface ModelInfo {

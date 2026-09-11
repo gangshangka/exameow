@@ -1,4 +1,5 @@
 import type { AIConfig, AnswerResult, ExamParams, ExplainParams, ExplainResult, JudgeParams, JudgeResult, ModelInfo } from '@exameow/shared'
+import { resolveAIOptions } from '@exameow/shared'
 import { tauriApi, type GenerateResult as TauriGenerateResult } from './bridge'
 import { httpApi, type GenerateResult as HttpGenerateResult, type ServerConfigInfo } from './http'
 import { cfApi } from './cf'
@@ -47,6 +48,7 @@ export const api = {
         config.endpoint,
         config.api_key,
         config.model,
+        resolveAIOptions(config),
         signal,
       )
     }
@@ -64,7 +66,7 @@ export const api = {
   ): Promise<AnswerResult> {
     if (isTauri()) {
       if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
-      return tauriApi.answerQuestion(question, language, config.endpoint, config.api_key, config.model)
+      return tauriApi.answerQuestion(question, language, config.endpoint, config.api_key, config.model, resolveAIOptions(config), signal)
     }
     if (isCloudflare()) {
       return cfApi.answerQuestion(question, language, config, signal)
@@ -80,7 +82,7 @@ export const api = {
   ): Promise<JudgeResult> {
     if (isTauri()) {
       if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
-      return tauriApi.judgeAnswer(params, language, config.endpoint, config.api_key, config.model)
+      return tauriApi.judgeAnswer(params, language, config.endpoint, config.api_key, config.model, resolveAIOptions(config), signal)
     }
     if (isCloudflare()) {
       return cfApi.judgeAnswer(params, language, config, signal)
@@ -96,7 +98,7 @@ export const api = {
   ): Promise<ExplainResult> {
     if (isTauri()) {
       if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError')
-      return tauriApi.explainQuestion(params, language, config.endpoint, config.api_key, config.model)
+      return tauriApi.explainQuestion(params, language, config.endpoint, config.api_key, config.model, resolveAIOptions(config), signal)
     }
     if (isCloudflare()) {
       return cfApi.explainQuestion(params, language, config, signal)
