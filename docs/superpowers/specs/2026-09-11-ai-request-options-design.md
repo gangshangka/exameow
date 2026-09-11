@@ -95,7 +95,8 @@ Rust 镜像 `packages/core/src/ai/options.rs`：`AIRequestOptions` `struct`（se
 
 - 原生取消新增 `cancel_ai_request` 命令 → 按仓库规则 bump 版本并提高 minShell：
   `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`workers/package.json`
-  同步 1.4.5 → 1.6.0；`Cargo.lock` 仅改 `name = "exameow"` 条目；`ota.json.minShell` → `1.6.0`。
+  同步 1.4.5 → 1.5.0；`Cargo.lock` 仅改 `name = "exameow"` 条目；`ota.json.minShell` → `1.5.0`。
+  （初版曾误写为 1.6.0，跳过了 1.5.0；已按 semver 修正回 1.5.0。）
 - 该功能未发版前不影响线上；发版流程照 AGENTS.md。
 
 ## 测试
