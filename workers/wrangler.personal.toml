@@ -1,0 +1,28 @@
+name = "exameow-personal-mcp"
+main = "src/index.ts"
+account_id = "d29f8507868b65e4f5e498b577edc491"
+compatibility_date = "2025-07-16"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+CF_ACCOUNT_ID = "d29f8507868b65e4f5e498b577edc491"
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "EXAM_DB"
+database_name = "exameow-personal-mcp"
+database_id = "ddbeaa68-b933-4dbf-a6c1-bd1e4cc5be8c"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "ATTEMPT_IMAGES"
+bucket_name = "exameow-personal-attempt-images"
+
+[triggers]
+crons = ["15 4 * * *"]
+
+[observability]
+enabled = true
