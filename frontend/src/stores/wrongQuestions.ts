@@ -8,7 +8,22 @@ const STORAGE_KEY = 'exameow-wrong-questions'
 function loadData(): Record<string, Record<string, WrongQuestionEntry>> {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : {}
+    const data: unknown = raw ? JSON.parse(raw) : {}
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return {}
+    return Object.fromEntries(Object.entries(data).filter(([, bank]) =>
+      bank && typeof bank === 'object' && !Array.isArray(bank)
+    ).map(([bankId, bank]) => [bankId, Object.fromEntries(Object.entries(bank as object).filter(([, entry]) =>
+      entry && typeof entry === 'object' && typeof (entry as WrongQuestionEntry).questionId === 'string'
+      && typeof (entry as WrongQuestionEntry).wrongCount === 'number'
+    ).map(([questionId, entry]) => {
+      const value = entry as WrongQuestionEntry
+      return [questionId, {
+        ...value,
+        consecutiveCorrect: typeof value.consecutiveCorrect === 'number' ? value.consecutiveCorrect : 0,
+        lastWrongAt: typeof value.lastWrongAt === 'number' ? value.lastWrongAt : 0,
+        addedAt: typeof value.addedAt === 'number' ? value.addedAt : 0,
+      }]
+    }))])) as Record<string, Record<string, WrongQuestionEntry>>
   } catch {
     return {}
   }

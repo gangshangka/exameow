@@ -112,6 +112,18 @@ const router = createRouter({
       meta: { title: 'Practice Records' },
     },
     {
+      path: '/mine/daily-tasks',
+      name: 'mine-daily-tasks',
+      component: () => import('@/views/DailyTasksView.vue'),
+      meta: { title: 'Daily Tasks' },
+    },
+    {
+      path: '/mine/flashcards',
+      name: 'mine-flashcards',
+      component: () => import('@/views/FlashcardsView.vue'),
+      meta: { title: 'Flashcards' },
+    },
+    {
       path: '/config',
       redirect: '/mine/config',
     },

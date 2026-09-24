@@ -61,12 +61,29 @@ export interface MockExamConfig {
 export interface PracticeSession {
   bankId: string
   mode: PracticeMode
-  questions: { question: Question; userAnswer: string | null; isCorrect: boolean | null; submitted: boolean }[]
+  questions: { question: Question; userAnswer: string | null; isCorrect: boolean | null; submitted: boolean; attemptId?: string }[]
   currentIndex: number
   startedAt: number
   finishedAt: number | null
   mockConfig?: MockExamConfig
   filter?: PracticeFilter
+}
+
+export interface AttemptRecord {
+  id: string
+  bankId: string
+  questionId: string
+  sessionQuestionId: string
+  questionSnapshot?: Question
+  startedAt: number
+  updatedAt?: number
+  submittedAt?: number
+  finalAnswer?: string | null
+  isCorrect?: boolean | null
+  answerChanges: { at: number; from: string | null; to: string | null }[]
+  notes: { id: string; type: 'text' | 'speech'; text: string; createdAt: number }[]
+  tags: string[]
+  attachments: { id: string; type: 'draft_image'; createdAt: number; storageKey: string; mimeType?: string; width?: number; height?: number }[]
 }
 
 export interface ExamParams {

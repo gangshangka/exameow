@@ -227,7 +227,7 @@ function getBadgeStyle(opt: string) {
 </script>
 
 <template>
-  <div class="card-elevated p-4 sm:p-6">
+  <div class="card-elevated p-4 sm:p-6" :data-question-id="question.id">
     <!-- Header -->
     <div class="flex items-center justify-between mb-4">
       <div class="flex items-center gap-2">

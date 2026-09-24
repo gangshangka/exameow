@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18nStore } from '@/stores/i18n'
 import { usePracticeHistoryStore } from '@/stores/practiceHistory'
+import AttemptHistory from '@/components/practice/AttemptHistory.vue'
 import { ArrowLeftIcon, FireIcon, CheckCircleIcon, CalendarDaysIcon, Squares2X2Icon } from '@heroicons/vue/24/outline'
 
 const router = useRouter()
@@ -385,5 +386,6 @@ const trendAxisLabels = computed(() => {
         </svg>
       </div>
     </div>
+    <AttemptHistory />
   </div>
 </template>

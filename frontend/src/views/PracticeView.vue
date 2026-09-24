@@ -18,6 +18,7 @@ import ImportDialog from '@/components/practice/ImportDialog.vue'
 import ModeSelector from '@/components/practice/ModeSelector.vue'
 import MockExamConfigComponent from '@/components/practice/MockExamConfig.vue'
 import QuestionCard from '@/components/practice/QuestionCard.vue'
+import AttemptProcess from '@/components/practice/AttemptProcess.vue'
 import ProgressBar from '@/components/practice/ProgressBar.vue'
 import PracticeResult from '@/components/practice/PracticeResult.vue'
 import AnswerSheet from '@/components/practice/AnswerSheet.vue'
@@ -178,6 +179,8 @@ const currentWrongCount = computed(() => {
   return wrongStore.getWrongEntry(practiceStore.session.bankId, originalId)?.wrongCount
 })
 
+const currentAttemptId = computed(() => practiceStore.currentQuestion?.attemptId)
+
 const resumeSessionHasWrong = computed(() => {
   if (!practiceStore.session) return false
   return wrongStore.getWrongQuestions(practiceStore.session.bankId, wrongSort.value)
@@ -216,6 +219,10 @@ watch(
     aiExplainError.value = null
   },
 )
+
+watch([viewState, () => practiceStore.session?.currentIndex], ([state]) => {
+  if (state === 'practice') practiceStore.ensureCurrentAttempt()
+})
 
 onUnmounted(() => {
   judgeAbort?.abort()
@@ -797,7 +804,7 @@ function handleBack() {
 
     <!-- Practice View -->
     <template v-if="isView('practice') && practiceStore.session && practiceStore.currentQuestion">
-      <div ref="swipeContainer" class="space-y-4 cursor-grab select-none">
+      <div ref="swipeContainer" class="space-y-4 cursor-grab">
         <!-- Progress Bar + Mode Toggle -->
         <div class="card-outlined p-3">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -850,6 +857,7 @@ function handleBack() {
             @self-check="handleSelfCheck"
             @remove-wrong="handleRemoveWrong"
           />
+          <AttemptProcess v-if="currentAttemptId" :key="currentAttemptId" :attempt-id="currentAttemptId" class="mt-3" />
         </div>
 
         <!-- Navigation -->

@@ -67,6 +67,12 @@ if [ -z "$DB_ID" ]; then
 fi
 npx wrangler d1 migrations apply exameow-exams --remote
 
+# MCP attempt drafts use a dedicated R2 bucket. Create it once before deployment.
+echo "[2.6/3] Ensuring R2 draft-image bucket exists..."
+if ! npx wrangler r2 bucket list | grep -q 'exameow-attempt-images'; then
+  npx wrangler r2 bucket create exameow-attempt-images
+fi
+
 # Step 3: Deploy worker
 echo ""
 echo "[3/3] Deploying to Cloudflare..."

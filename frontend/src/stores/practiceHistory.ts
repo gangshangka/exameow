@@ -11,7 +11,13 @@ const KEY = 'exameow-practice-history'
 
 function load(): Record<string, DayRecord> {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || '{}')
+    const data: unknown = JSON.parse(localStorage.getItem(KEY) || '{}')
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return {}
+    return Object.fromEntries(Object.entries(data).filter(([, day]) =>
+      day && typeof day === 'object' && typeof (day as DayRecord).total === 'number'
+      && typeof (day as DayRecord).correct === 'number' && (day as DayRecord).byType
+      && typeof (day as DayRecord).byType === 'object'
+    )) as Record<string, DayRecord>
   } catch {
     return {}
   }
@@ -25,7 +31,7 @@ function todayKey(ts = Date.now()): string {
 
 export const usePracticeHistoryStore = defineStore('practiceHistory', () => {
   const days = ref<Record<string, DayRecord>>(load())
-  watch(days, (v) => localStorage.setItem(KEY, JSON.stringify(v)), { deep: true })
+  watch(days, (v) => { try { localStorage.setItem(KEY, JSON.stringify(v)) } catch { /* Storage may be full. */ } }, { deep: true })
 
   function record(type: string, isCorrect: boolean | null) {
     const key = todayKey()

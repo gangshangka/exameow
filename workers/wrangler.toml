@@ -23,6 +23,10 @@ database_name = "exameow-exams"
 database_id = "90c1f699-947e-40f6-acf2-3c1fc8f0b462"
 migrations_dir = "migrations"
 
+[[r2_buckets]]
+binding = "ATTEMPT_IMAGES"
+bucket_name = "exameow-attempt-images"
+
 [triggers]
 crons = ["15 4 * * *"]
 

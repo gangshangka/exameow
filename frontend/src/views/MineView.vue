@@ -32,6 +32,14 @@ const entries = [
     <p class="text-body-lg mb-6" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('mineSubtitle') }}</p>
 
     <!-- Menu Entries List -->
+    <button class="card-filled w-full p-4 sm:p-5 mb-3.5 text-left" @click="router.push('/mine/daily-tasks')">
+      <div class="font-bold">⏱️ 每日任务</div>
+      <div class="text-sm mt-1" style="color: rgb(var(--md-on-surface-variant))">查看任务并记录用时</div>
+    </button>
+    <button class="card-filled w-full p-4 sm:p-5 mb-3.5 text-left" @click="router.push('/mine/flashcards')">
+      <div class="font-bold">🗂️ 我的闪卡</div>
+      <div class="text-sm mt-1" style="color: rgb(var(--md-on-surface-variant))">查看与编辑选中文字创建的闪卡</div>
+    </button>
     <div class="space-y-3.5">
       <button
         v-for="e in entries"

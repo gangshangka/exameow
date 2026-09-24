@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import type { Ai, Fetcher, D1Database } from '@cloudflare/workers-types'
+import type { Ai, Fetcher, D1Database, R2Bucket } from '@cloudflare/workers-types'
 import { generateExam } from './exam'
 import { handlePublish, handleGetExam, handleSubmit, handleResults, handleDeleteExam, handleReport, handleAdminReports, handleAdminDelete, handleAdminRestore } from './relay'
 import { answerQuestion } from './answer'
@@ -9,11 +9,16 @@ import { explainQuestion } from './explain'
 import { parseFile } from './parser'
 import { generateXlsxBuffer, generateCsvContent } from './export'
 import { Question, ExamParams, AVAILABLE_CF_MODELS, AIRequestOptions } from './types'
+import { createDevice, deviceHash, handleDailyTasksMcp, listAssignments } from './dailyTasksMcp'
+import { flashcardSchema, listFlashcards, upsertFlashcards } from './flashcards'
+import { z } from 'zod'
+import { attemptSchema, getAttempt, putAttemptImage, upsertAttempts } from './attemptRecords'
 
 type Bindings = {
   AI: Ai
   ASSETS: Fetcher
   EXAM_DB: D1Database
+  ATTEMPT_IMAGES: R2Bucket
   CF_ACCOUNT_ID?: string
   CF_API_TOKEN?: string
   ADMIN_TOKEN?: string
@@ -23,9 +28,86 @@ const app = new Hono<{ Bindings: Bindings }>()
 
 app.use('/api/*', cors({
   origin: '*',
-  allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type'],
 }))
+
+app.post('/api/daily-tasks/device', async c => {
+  const token = await createDevice(c.env.EXAM_DB)
+  return c.json({ token })
+})
+
+app.get('/api/daily-tasks/:token', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  return c.json({ tasks: await listAssignments(c.env.EXAM_DB, hash) })
+})
+
+app.delete('/api/daily-tasks/:token/device', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  let cursor: string | undefined
+  do {
+    const page = await c.env.ATTEMPT_IMAGES.list({ prefix: `${hash}/`, cursor })
+    if (page.objects.length) await c.env.ATTEMPT_IMAGES.delete(page.objects.map(object => object.key))
+    cursor = page.truncated ? page.cursor : undefined
+  } while (cursor)
+  await c.env.EXAM_DB.batch([
+    c.env.EXAM_DB.prepare('DELETE FROM daily_task_assignments WHERE token_hash = ?').bind(hash),
+    c.env.EXAM_DB.prepare('DELETE FROM flashcards WHERE token_hash = ?').bind(hash),
+    c.env.EXAM_DB.prepare('DELETE FROM attempt_records WHERE token_hash = ?').bind(hash),
+    c.env.EXAM_DB.prepare('DELETE FROM daily_task_devices WHERE token_hash = ?').bind(hash),
+  ])
+  return c.json({ deleted: true })
+})
+
+app.post('/api/flashcards/:token/sync', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  const parsed = z.object({ cards: z.array(flashcardSchema).max(100) }).safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'Invalid flashcards' }, 400)
+  await upsertFlashcards(c.env.EXAM_DB, hash, parsed.data.cards)
+  return c.json({ cards: await listFlashcards(c.env.EXAM_DB, hash) })
+})
+
+app.post('/api/attempts/:token/sync', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  const parsed = z.object({ attempts: z.array(attemptSchema).max(25) }).safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'Invalid attempts' }, 400)
+  await upsertAttempts(c.env.EXAM_DB, hash, parsed.data.attempts)
+  return c.json({ saved: parsed.data.attempts.length })
+})
+
+app.put('/api/attempts/:token/:attemptId/images/:id', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  const id = c.req.param('id')
+  const attempt = await getAttempt(c.env.EXAM_DB, hash, c.req.param('attemptId'))
+  if (!attempt?.attachments.some(item => item.storageKey === id)) return c.json({ error: 'Unknown attachment' }, 404)
+  const mimeType = c.req.header('content-type') || ''
+  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(id) || !mimeType.startsWith('image/')) return c.json({ error: 'Invalid image' }, 400)
+  if (Number(c.req.header('content-length') || 0) > 8 * 1024 * 1024) return c.json({ error: 'Image too large' }, 413)
+  const data = await c.req.arrayBuffer()
+  if (data.byteLength > 8 * 1024 * 1024) return c.json({ error: 'Image too large' }, 413)
+  await putAttemptImage(c.env.ATTEMPT_IMAGES, hash, id, data, mimeType)
+  return c.json({ saved: true })
+})
+
+app.delete('/api/attempts/:token/images/:id', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  const id = c.req.param('id')
+  if (!/^[a-zA-Z0-9_-]{8,100}$/.test(id)) return c.json({ error: 'Invalid image' }, 400)
+  await c.env.ATTEMPT_IMAGES.delete(`${hash}/${id}`)
+  return c.json({ deleted: true })
+})
+
+app.all('/mcp/:token', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  return handleDailyTasksMcp(c.req.raw, c.env.EXAM_DB, c.env.ATTEMPT_IMAGES, hash)
+})
 
 // GET /api/models - returns available CF AI models (dynamic from API, fallback to static list)
 app.get('/api/models', async (c) => {

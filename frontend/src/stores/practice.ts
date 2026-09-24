@@ -4,6 +4,7 @@ import type { QuestionBank, PracticeSession, PracticeMode, MockExamConfig, Quest
 import { analyzeCSV, analyzeExcel, parseWithMapping } from '@/utils/importParser'
 import type { ColumnMapping, ImportAnalysis } from '@/utils/importParser'
 import { usePracticeHistoryStore } from '@/stores/practiceHistory'
+import { useAttemptStore } from '@/stores/attempts'
 import { matchPracticeFilter, reconcileMockConfig } from '@/utils/practiceFilter'
 
 const STORAGE_KEY = 'exameow-banks'
@@ -12,7 +13,17 @@ const SESSION_KEY = 'exameow-practice-session'
 function loadBanks(): QuestionBank[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    const data: unknown = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(data)) return []
+    return data.filter((bank): bank is QuestionBank =>
+      bank && typeof bank.id === 'string' && typeof bank.name === 'string' && Array.isArray(bank.questions)
+    ).map(bank => ({
+      ...bank,
+      questions: bank.questions.filter(question => question && typeof question.id === 'string'
+        && typeof question.type === 'string' && typeof question.stem === 'string'
+        && typeof question.answer === 'string' && Array.isArray(question.options))
+        .map(question => ({ ...question, analysis: typeof question.analysis === 'string' ? question.analysis : '' })),
+    }))
   } catch {
     return []
   }
@@ -27,7 +38,30 @@ function saveBanks(banks: QuestionBank[]) {
 function loadSession(): PracticeSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
-    return raw ? JSON.parse(raw) : null
+    const data: unknown = raw ? JSON.parse(raw) : null
+    if (!data || typeof data !== 'object') return null
+    const session = data as Partial<PracticeSession>
+    if (typeof session.bankId !== 'string' || !Array.isArray(session.questions)
+      || typeof session.currentIndex !== 'number' || !Number.isInteger(session.currentIndex)
+      || session.currentIndex < 0 || session.currentIndex >= session.questions.length
+      || typeof session.startedAt !== 'number') return null
+    if (!session.questions.every(item => item && item.question && typeof item.question.id === 'string'
+      && typeof item.question.type === 'string' && typeof item.question.stem === 'string'
+      && typeof item.question.answer === 'string'
+      && Array.isArray(item.question.options))) return null
+    return {
+      ...session,
+      mode: session.mode ?? 'sequential',
+      finishedAt: session.finishedAt ?? null,
+      questions: session.questions.map(item => ({
+        ...item,
+        question: { ...item.question, analysis: typeof item.question.analysis === 'string' ? item.question.analysis : '' },
+        userAnswer: typeof item.userAnswer === 'string' ? item.userAnswer : null,
+        isCorrect: typeof item.isCorrect === 'boolean' ? item.isCorrect : null,
+        submitted: item.submitted === true,
+        attemptId: typeof item.attemptId === 'string' ? item.attemptId : undefined,
+      })),
+    } as PracticeSession
   } catch {
     return null
   }
@@ -152,6 +186,23 @@ export const usePracticeStore = defineStore('practice', () => {
     return session.value.questions.filter(q => q.isCorrect !== null).length
   })
 
+  function ensureCurrentAttempt(): string | null {
+    if (!session.value) return null
+    const item = session.value.questions[session.value.currentIndex]
+    if (!item) return null
+    const attempts = useAttemptStore()
+    if (item.attemptId && attempts.getAttempt(item.attemptId)) return item.attemptId
+    const bank = getBank(session.value.bankId)
+    const original = bank?.questions.find(q => `${q.id}-s${session.value!.currentIndex}` === item.question.id)
+    const questionId = original?.id ?? item.question.id.replace(/-s\d+$/, '')
+    const attempt = attempts.createAttempt(session.value.bankId, questionId, item.question.id, item.question)
+    if (item.userAnswer !== null) attempt.answerChanges.push({ at: Date.now(), from: null, to: item.userAnswer })
+    if (item.submitted) attempts.submit(attempt.id, item.userAnswer, item.isCorrect)
+    item.attemptId = attempt.id
+    saveSession(session.value)
+    return attempt.id
+  }
+
   function addBank(bank: QuestionBank) {
     banks.value.push(bank)
     saveBanks(banks.value)
@@ -223,6 +274,7 @@ export const usePracticeStore = defineStore('practice', () => {
       filter: mode === 'wrong' ? undefined : filter,
     }
     saveSession(session.value)
+    ensureCurrentAttempt()
     return true
   }
 
@@ -236,6 +288,8 @@ export const usePracticeStore = defineStore('practice', () => {
     if (!session.value) return
     const item = session.value.questions[session.value.currentIndex]
     if (!item) return
+    const attemptId = ensureCurrentAttempt()
+    if (attemptId) useAttemptStore().recordAnswerChange(attemptId, item.userAnswer, answer)
     item.userAnswer = answer
     saveSession(session.value)
   }
@@ -253,6 +307,8 @@ export const usePracticeStore = defineStore('practice', () => {
     if (!session.value) return null
     const item = session.value.questions[session.value.currentIndex]
     if (!item) return null
+    const attemptId = ensureCurrentAttempt()
+    if (attemptId) useAttemptStore().recordAnswerChange(attemptId, item.userAnswer, answer)
     item.userAnswer = answer
     item.submitted = true
 
@@ -271,6 +327,7 @@ export const usePracticeStore = defineStore('practice', () => {
       item.isCorrect = userAns !== '' && userAns === correctAns
     }
 
+    if (attemptId) useAttemptStore().submit(attemptId, answer, item.isCorrect)
     usePracticeHistoryStore().record(q.type, item.isCorrect)
     saveSession(session.value)
     return item.isCorrect
@@ -280,8 +337,10 @@ export const usePracticeStore = defineStore('practice', () => {
     if (!session.value) return
     const item = session.value.questions[session.value.currentIndex]
     if (!item) return
+    const attemptId = ensureCurrentAttempt()
     item.isCorrect = isCorrect
     item.submitted = true
+    if (attemptId) useAttemptStore().submit(attemptId, item.userAnswer, isCorrect)
     usePracticeHistoryStore().record(item.question.type, isCorrect)
     saveSession(session.value)
   }
@@ -309,6 +368,7 @@ export const usePracticeStore = defineStore('practice', () => {
     if (session.value.currentIndex < session.value.questions.length - 1) {
       session.value.currentIndex++
       saveSession(session.value)
+      ensureCurrentAttempt()
     }
   }
 
@@ -317,6 +377,7 @@ export const usePracticeStore = defineStore('practice', () => {
     if (session.value.currentIndex > 0) {
       session.value.currentIndex--
       saveSession(session.value)
+      ensureCurrentAttempt()
     }
   }
 
@@ -325,6 +386,7 @@ export const usePracticeStore = defineStore('practice', () => {
     if (index >= 0 && index < session.value.questions.length) {
       session.value.currentIndex = index
       saveSession(session.value)
+      ensureCurrentAttempt()
     }
   }
 
@@ -347,6 +409,7 @@ export const usePracticeStore = defineStore('practice', () => {
       session.value.currentIndex = session.value.questions.length - 1
     }
     saveSession(session.value)
+    ensureCurrentAttempt()
     return false
   }
 
@@ -454,6 +517,7 @@ export const usePracticeStore = defineStore('practice', () => {
     answeredCount,
     hasUnanswered,
     currentSubmitted,
+    ensureCurrentAttempt,
     score,
     autoGradedCount,
     addBank,

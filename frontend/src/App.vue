@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import AppShell from '@/components/layout/AppShell.vue'
+import SelectionToFlashcard from '@/components/flashcards/SelectionToFlashcard.vue'
 
 const configStore = useConfigStore()
 
@@ -57,5 +58,6 @@ onMounted(async () => {
 
 <template>
   <AppShell v-if="!childWindow" />
+  <SelectionToFlashcard v-if="!childWindow" />
   <component v-else :is="childComponent" />
 </template>

@@ -32,7 +32,7 @@
 
 **Exameow (过了喵)** is an **open-source AI exam question generator** that turns your study materials into exam-quality questions in seconds. Upload PDFs, Word documents, PowerPoint slides, images, or text — the AI reads the content and generates multiple-choice, true/false, fill-in-the-blank, and short-answer questions tailored to your needs.
 
-Unlike other AI quiz generators that require accounts, subscriptions, or send your data to the cloud, Exameow is **local-first and privacy-focused**. Your question banks, practice records, and wrong-question history stay on your device. Desktop and mobile apps work **fully offline** with your own OpenAI-compatible API key (OpenAI, DeepSeek, Qwen, GLM, or any self-hosted model).
+Unlike other AI quiz generators that require accounts, subscriptions, or send your data to the cloud, Exameow is **local-first and privacy-focused**. Your question banks, practice records, and wrong-question history stay on your device by default; optional MCP sync requires you to enable it. Desktop and mobile apps work **fully offline** with your own OpenAI-compatible API key (OpenAI, DeepSeek, Qwen, GLM, or any self-hosted model).
 
 For teachers and trainers, Exameow includes a built-in **online exam relay** — publish exams from your local question banks, share a 6-digit code, and students join from any browser. Instant scoring, teacher dashboard, and anti-abuse protections included. Self-host the entire stack with one Docker command.
 
@@ -102,7 +102,7 @@ Search local question banks by typing or pasting a question — optional AI answ
 
 ### 🌐 Cross-Platform & Privacy — Your Data, Your Device
 
-Exameow runs on **Windows, macOS, Linux, Android, and Web** (iOS via self-build). Deploy the web version with **one Docker command**. All question banks, practice records, and wrong-question history are stored locally — nothing is uploaded to a server unless you choose to use the online exam relay. API keys are encrypted with **AES-256-GCM** on desktop. The UI auto-detects system language (Chinese/English) with one-tap switching.
+Exameow runs on **Windows, macOS, Linux, Android, and Web** (iOS via self-build). Deploy the web version with **one Docker command**. Question banks, wrong-question history, and practice statistics stay local by default. The online exam relay and optional MCP sync use server storage only when enabled by the user. API keys are encrypted with **AES-256-GCM** on desktop. The UI auto-detects system language (Chinese/English) with one-tap switching.
 
 - **Desktop & Mobile** — Windows, macOS, Linux, Android (iOS self-build)
 - **Self-Hosted Web** — One-command Docker deployment
