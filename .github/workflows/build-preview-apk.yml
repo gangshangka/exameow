@@ -48,7 +48,7 @@ jobs:
           mkdir -p dist
           UNSIGNED_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | head -n 1)
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -n 1)
-          "$BUILD_TOOLS/zipalign" -f -v 4 "$UNSIGNED_APK" dist/Exameow-process-android-arm64.apk
+          "$BUILD_TOOLS/zipalign" -f -v 4 "$UNSIGNED_APK" dist/Exameow-process-side-by-side-arm64.apk
           "$BUILD_TOOLS/apksigner" sign \
             --ks release.keystore \
             --ks-pass "pass:$STORE_PASSWORD" \
@@ -56,9 +56,9 @@ jobs:
             --ks-key-alias exameow \
             --v1-signing-enabled true \
             --v2-signing-enabled true \
-            dist/Exameow-process-android-arm64.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose dist/Exameow-process-android-arm64.apk
+            dist/Exameow-process-side-by-side-arm64.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose dist/Exameow-process-side-by-side-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: exameow-process-android-arm64
-          path: dist/Exameow-process-android-arm64.apk
+          name: exameow-process-side-by-side-arm64
+          path: dist/Exameow-process-side-by-side-arm64.apk
