@@ -40,6 +40,10 @@ const entries = [
       <div class="font-bold">🗂️ 我的闪卡</div>
       <div class="text-sm mt-1" style="color: rgb(var(--md-on-surface-variant))">查看与编辑选中文字创建的闪卡</div>
     </button>
+    <button class="card-filled w-full p-4 sm:p-5 mb-3.5 text-left" @click="router.push('/mine/knowledge')">
+      <div class="font-bold">🌳 知识树</div>
+      <div class="text-sm mt-1" style="color: rgb(var(--md-on-surface-variant))">管理科目、章节、考点和子考点</div>
+    </button>
     <div class="space-y-3.5">
       <button
         v-for="e in entries"

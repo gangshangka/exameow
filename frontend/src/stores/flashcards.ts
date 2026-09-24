@@ -8,6 +8,7 @@ export interface Flashcard {
   back: string
   sourceText?: string
   sourceQuestionId?: string
+  knowledgePointId?: string
   createdAt: number
   updatedAt: number
   deletedAt?: number
@@ -38,10 +39,10 @@ export const useFlashcardsStore = defineStore('flashcards', () => {
     catch { storageError.value = '闪卡保存失败：本地存储空间可能已满' }
   }
 
-  function create(front: string, back = '', sourceQuestionId?: string): Flashcard | null {
+  function create(front: string, back = '', sourceQuestionId?: string, knowledgePointId?: string): Flashcard | null {
     if (!front.trim()) return null
     const now = Date.now()
-    const card: Flashcard = { id: newId(), front: front.trim(), back: back.trim(), sourceText: front.trim(), sourceQuestionId, createdAt: now, updatedAt: now }
+    const card: Flashcard = { id: newId(), front: front.trim(), back: back.trim(), sourceText: front.trim(), sourceQuestionId, knowledgePointId, createdAt: now, updatedAt: now }
     cards.value.push(card)
     save()
     void syncRemote()
@@ -54,6 +55,15 @@ export const useFlashcardsStore = defineStore('flashcards', () => {
     card.front = front.trim()
     card.back = back.trim()
     card.updatedAt = Date.now()
+    save()
+    void syncRemote()
+  }
+
+  function setKnowledgePoint(id: string, knowledgePointId?: string) {
+    const card = cards.value.find(item => item.id === id && !item.deletedAt)
+    if (!card) return
+    card.knowledgePointId = knowledgePointId
+    card.updatedAt = Math.max(Date.now(), card.updatedAt + 1)
     save()
     void syncRemote()
   }
@@ -104,5 +114,5 @@ export const useFlashcardsStore = defineStore('flashcards', () => {
     }
   }
 
-  return { cards, storageError, syncError, syncing, create, update, remove, mergeRemote, syncRemote }
+  return { cards, storageError, syncError, syncing, create, update, setKnowledgePoint, remove, mergeRemote, syncRemote }
 })

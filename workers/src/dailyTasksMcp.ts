@@ -3,6 +3,7 @@ import type { D1Database, R2Bucket } from '@cloudflare/workers-types'
 import { z } from 'zod'
 import { createFlashcard, deleteFlashcard, listFlashcards, updateFlashcard } from './flashcards'
 import { getAttempt, imageContent, listAttempts } from './attemptRecords'
+import { getTaskHistory, listKnowledge, listTaskHistory, upsertKnowledge } from './knowledgeTaskHistory'
 
 const tokenPattern = /^[0-9a-f]{64}$/
 const assignmentSchema = z.object({
@@ -11,6 +12,7 @@ const assignmentSchema = z.object({
   description: z.string().max(2000).optional(),
   externalId: z.string().trim().min(1).max(100).optional().describe('Stable ID to update this assignment without resetting its timer'),
   plannedMinutes: z.number().int().min(1).max(1440).optional(),
+  knowledgePointId: z.string().max(100).optional(),
 })
 
 async function hashToken(token: string): Promise<string> {
@@ -34,7 +36,7 @@ export async function deviceHash(db: D1Database, token: string): Promise<string 
 }
 
 export async function listAssignments(db: D1Database, hash: string) {
-  const result = await db.prepare('SELECT id, external_id AS externalId, day AS date, title, description, planned_minutes AS plannedMinutes, created_at AS createdAt, updated_at AS updatedAt FROM daily_task_assignments WHERE token_hash = ? ORDER BY day DESC, created_at ASC LIMIT 500')
+  const result = await db.prepare('SELECT id, external_id AS externalId, day AS date, title, description, planned_minutes AS plannedMinutes, knowledge_point_id AS knowledgePointId, created_at AS createdAt, updated_at AS updatedAt FROM daily_task_assignments WHERE token_hash = ? ORDER BY day DESC, created_at ASC LIMIT 500')
     .bind(hash).all()
   return result.results
 }
@@ -53,21 +55,46 @@ export async function handleDailyTasksMcp(request: Request, db: D1Database, imag
       const ids: string[] = []
       for (const task of tasks) {
         const existing = task.externalId
-          ? await db.prepare('SELECT id FROM daily_task_assignments WHERE token_hash = ? AND external_id = ?')
-            .bind(hash, task.externalId).first<{ id: string }>()
+          ? await db.prepare('SELECT id FROM daily_task_assignments WHERE token_hash = ? AND external_id = ? AND day = ?')
+            .bind(hash, task.externalId, task.date).first<{ id: string }>()
           : null
         const id = existing?.id ?? crypto.randomUUID()
         if (existing) {
-          await db.prepare('UPDATE daily_task_assignments SET day = ?, title = ?, description = ?, planned_minutes = ?, updated_at = ? WHERE id = ? AND token_hash = ?')
-            .bind(task.date, task.title, task.description ?? '', task.plannedMinutes ?? null, now, id, hash).run()
+          await db.prepare('UPDATE daily_task_assignments SET title = ?, description = ?, planned_minutes = ?, knowledge_point_id = ?, updated_at = ? WHERE id = ? AND token_hash = ?')
+            .bind(task.title, task.description ?? '', task.plannedMinutes ?? null, task.knowledgePointId ?? null, now, id, hash).run()
         } else {
-          await db.prepare('INSERT INTO daily_task_assignments (id, token_hash, external_id, day, title, description, planned_minutes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-            .bind(id, hash, task.externalId ?? null, task.date, task.title, task.description ?? '', task.plannedMinutes ?? null, now, now).run()
+          await db.prepare('INSERT INTO daily_task_assignments (id, token_hash, external_id, day, title, description, planned_minutes, knowledge_point_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(id, hash, task.externalId ?? null, task.date, task.title, task.description ?? '', task.plannedMinutes ?? null, task.knowledgePointId ?? null, now, now).run()
         }
         ids.push(id)
       }
       return { content: [{ type: 'text', text: `已派发 ${ids.length} 项 Exameow 每日任务。打开应用的“每日任务”页面即可同步并计时。任务 ID：${ids.join(', ')}` }] }
     })
+    server.registerTool('list_knowledge_points', {
+      description: 'Read the knowledge tree and IDs for binding study tasks.',
+      inputSchema: z.object({}), annotations: { readOnlyHint: true, openWorldHint: false },
+    }, async () => ({ content: [{ type: 'text', text: JSON.stringify(await listKnowledge(db, hash)) }] }))
+    server.registerTool('create_knowledge_point', {
+      description: 'Create a subject, chapter, topic or subtopic. Supply a parentId to place it within the tree.',
+      inputSchema: z.object({ name: z.string().trim().min(1).max(120), parentId: z.string().max(100).nullable().optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    }, async ({ name, parentId }) => {
+      const nodes = await listKnowledge(db, hash)
+      if (parentId && !nodes.some(node => node.id === parentId && !node.archivedAt)) return { content: [{ type: 'text', text: '上级知识点不存在' }], isError: true }
+      const now = Date.now()
+      const node = { id: crypto.randomUUID(), parentId: parentId ?? null, name, createdAt: now, updatedAt: now }
+      await upsertKnowledge(db, hash, [node])
+      return { content: [{ type: 'text', text: JSON.stringify(node) }] }
+    })
+    server.registerTool('list_task_history', {
+      description: 'Read permanent task history including plan, actual duration, completion quality and review notes.',
+      inputSchema: z.object({ limit: z.number().int().min(1).max(100).default(30), offset: z.number().int().min(0).default(0) }),
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    }, async ({ limit, offset }) => ({ content: [{ type: 'text', text: JSON.stringify(await listTaskHistory(db, hash, limit, offset)) }] }))
+    server.registerTool('get_task_history', {
+      description: 'Read a complete task record by ID, including reschedules, pause segments, wrong reason, forgotten point and next action.',
+      inputSchema: z.object({ id: z.string() }), annotations: { readOnlyHint: true, openWorldHint: false },
+    }, async ({ id }) => ({ content: [{ type: 'text', text: JSON.stringify(await getTaskHistory(db, hash, id)) }] }))
     server.registerTool('list_flashcards', {
       description: 'List this device’s flashcards, including front, back, and IDs for editing.',
       inputSchema: z.object({}),
@@ -78,18 +105,18 @@ export async function handleDailyTasksMcp(request: Request, db: D1Database, imag
     })
     server.registerTool('create_flashcard', {
       description: 'Create a flashcard on this Exameow device.',
-      inputSchema: z.object({ front: z.string().trim().min(1).max(4000), back: z.string().max(8000).default(''), sourceQuestionId: z.string().max(200).optional() }),
+      inputSchema: z.object({ front: z.string().trim().min(1).max(4000), back: z.string().max(8000).default(''), sourceQuestionId: z.string().max(200).optional(), knowledgePointId: z.string().max(100).optional() }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    }, async ({ front, back, sourceQuestionId }) => {
-      const card = await createFlashcard(db, hash, front, back, sourceQuestionId)
+    }, async ({ front, back, sourceQuestionId, knowledgePointId }) => {
+      const card = await createFlashcard(db, hash, front, back, sourceQuestionId, knowledgePointId)
       return { content: [{ type: 'text', text: JSON.stringify(card) }] }
     })
     server.registerTool('update_flashcard', {
       description: 'Edit the front or back of a flashcard by ID.',
-      inputSchema: z.object({ id: z.string(), front: z.string().trim().min(1).max(4000).optional(), back: z.string().max(8000).optional() }),
+      inputSchema: z.object({ id: z.string(), front: z.string().trim().min(1).max(4000).optional(), back: z.string().max(8000).optional(), knowledgePointId: z.string().max(100).nullable().optional() }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    }, async ({ id, front, back }) => ({
-      content: [{ type: 'text', text: (await updateFlashcard(db, hash, id, front, back)) ? '闪卡已更新' : '未找到闪卡' }],
+    }, async ({ id, front, back, knowledgePointId }) => ({
+      content: [{ type: 'text', text: (await updateFlashcard(db, hash, id, front, back, knowledgePointId)) ? '闪卡已更新' : '未找到闪卡' }],
     }))
     server.registerTool('delete_flashcard', {
       description: 'Delete a flashcard by ID.',

@@ -5,6 +5,7 @@ export const attemptSchema = z.object({
   id: z.string().min(1).max(100),
   bankId: z.string().max(200),
   questionId: z.string().max(200),
+  knowledgePointId: z.string().max(100).optional(),
   sessionQuestionId: z.string().max(200),
   startedAt: z.number().int().nonnegative(),
   submittedAt: z.number().int().nonnegative().optional(),

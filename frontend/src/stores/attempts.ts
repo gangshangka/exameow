@@ -72,7 +72,7 @@ export const useAttemptStore = defineStore('attempts', () => {
 
   function createAttempt(bankId: string, questionId: string, sessionQuestionId: string, questionSnapshot: Question): AttemptRecord {
     const record: AttemptRecord = {
-      id: id(), bankId, questionId, sessionQuestionId, questionSnapshot: { ...questionSnapshot, options: [...questionSnapshot.options] }, startedAt: Date.now(), updatedAt: Date.now(),
+      id: id(), bankId, questionId, sessionQuestionId, knowledgePointId: questionSnapshot.knowledgePointId, questionSnapshot: { ...questionSnapshot, options: [...questionSnapshot.options] }, startedAt: Date.now(), updatedAt: Date.now(),
       answerChanges: [], notes: [], tags: [], attachments: [],
     }
     records.value.push(record)
@@ -116,6 +116,15 @@ export const useAttemptStore = defineStore('attempts', () => {
     const record = getAttempt(attemptId)
     if (!record) return
     record.tags = record.tags.includes(tag) ? record.tags.filter(item => item !== tag) : [...record.tags, tag]
+    touch(record)
+  }
+
+  function setKnowledgePoint(attemptId: string, knowledgePointId?: string) {
+    const record = getAttempt(attemptId)
+    if (!record) return
+    record.knowledgePointId = knowledgePointId
+    if (record.questionSnapshot) record.questionSnapshot.knowledgePointId = knowledgePointId
+    usePracticeStore().setQuestionKnowledgePoint(record.bankId, record.questionId, knowledgePointId)
     touch(record)
   }
 
@@ -226,5 +235,5 @@ export const useAttemptStore = defineStore('attempts', () => {
     finally { syncing.value = false }
   }
 
-  return { records, storageError, syncError, syncing, syncEnabled, setSyncEnabled, syncToMcp, getAttempt, createAttempt, recordAnswerChange, submit, setTextNote, addSpeechNote, toggleTag, addAttachment, removeAttachment, getRecentAttempts, getAttemptAnalysisPayload }
+  return { records, storageError, syncError, syncing, syncEnabled, setSyncEnabled, syncToMcp, getAttempt, createAttempt, recordAnswerChange, submit, setTextNote, addSpeechNote, toggleTag, setKnowledgePoint, addAttachment, removeAttachment, getRecentAttempts, getAttemptAnalysisPayload }
 })

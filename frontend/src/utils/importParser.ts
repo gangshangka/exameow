@@ -1,6 +1,7 @@
 import type { Question } from '@exameow/shared'
 import { Difficulty, QuestionType as QT } from '@exameow/shared'
 import * as XLSX from 'xlsx'
+import { detectImportAdapter, importAdapters } from './importAdapters'
 
 type QuestionType = typeof QT[keyof typeof QT]
 
@@ -31,6 +32,9 @@ export interface ImportAnalysis {
   hasHeader: boolean
   mapping: ColumnMapping
   missing: MissingField[]
+  adapterId?: string
+  adapterLabel?: string
+  sourceIdColumn?: number
 }
 
 function normalize(s: string): string {
@@ -335,6 +339,12 @@ function analyzeRows(rawRows: string[][], forceNativeXlsx: boolean): ImportAnaly
   if (rawRows.length === 0) return null
 
   const firstRow = (rawRows[0] ?? []).map(c => String(c ?? ''))
+  const adapter = detectImportAdapter(firstRow)
+  if (adapter) {
+    const { columns, sourceIdColumn } = adapter.mapping(firstRow)
+    return { headers: firstRow, rows: rawRows.slice(1), hasHeader: true, mapping: columns,
+      missing: computeMissing(rawRows.slice(1), columns, true), adapterId: adapter.id, adapterLabel: adapter.label, sourceIdColumn }
+  }
 
   if (forceNativeXlsx) {
     return {
@@ -381,6 +391,7 @@ function analyzeRows(rawRows: string[][], forceNativeXlsx: boolean): ImportAnaly
 export function parseWithMapping(analysis: ImportAnalysis, mapping: ColumnMapping, source: string): Question[] {
   const questions: Question[] = []
   const rows = analysis.rows
+  const clean = importAdapters.find(adapter => adapter.id === analysis.adapterId)?.clean ?? ((value: string) => value.trim())
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
@@ -388,30 +399,32 @@ export function parseWithMapping(analysis: ImportAnalysis, mapping: ColumnMappin
     const allBlank = row.every(c => !c || c.trim() === '')
     if (allBlank) continue
 
-    const stem = mapping.stem !== null ? (row[mapping.stem] ?? '').trim() : ''
+    const stem = mapping.stem !== null ? clean(row[mapping.stem] ?? '') : ''
     if (!stem) continue
 
     let qtype: QuestionType = SA
     if (mapping.type !== null) {
-      const t = (row[mapping.type] ?? '').trim()
+      const t = clean(row[mapping.type] ?? '')
       qtype = typeLabelToEnum(t)
     }
 
     const options: string[] = []
     if (mapping.combinedOptions !== null) {
-      const cell = (row[mapping.combinedOptions] ?? '').trim()
+      const cell = clean(row[mapping.combinedOptions] ?? '')
       if (cell) {
         options.push(...splitOptionsCell(cell, mapping.optionsDelimiter || undefined))
       }
     } else {
       for (const oi of mapping.options) {
-        const o = (row[oi] ?? '').trim()
-        if (o) options.push(o)
+        const o = clean(row[oi] ?? '')
+        if (o || analysis.adapterId === 'external-wrong') options.push(o)
       }
+      if (analysis.adapterId === 'external-wrong') while (options.length && !options[options.length - 1]) options.pop()
     }
 
-    const answer = mapping.answer !== null ? (row[mapping.answer] ?? '').trim() : ''
-    const analysis = mapping.analysis !== null ? (row[mapping.analysis] ?? '').trim() : ''
+    const answer = mapping.answer !== null ? clean(row[mapping.answer] ?? '') : ''
+    const explanation = mapping.analysis !== null ? clean(row[mapping.analysis] ?? '') : ''
+    if (analysis.adapterId === 'external-wrong' && !answer) continue
     const difficulty = mapping.difficulty !== null
       ? normalizeDifficulty(row[mapping.difficulty] ?? '')
       : undefined
@@ -427,10 +440,11 @@ export function parseWithMapping(analysis: ImportAnalysis, mapping: ColumnMappin
       stem,
       options,
       answer,
-      analysis,
+      analysis: explanation,
       subject: mapping.subject !== null ? (row[mapping.subject] ?? '').trim() || undefined : undefined,
       chapter: mapping.chapter !== null ? (row[mapping.chapter] ?? '').trim() || undefined : undefined,
       difficulty,
+      sourceId: analysis.sourceIdColumn !== undefined ? clean(row[analysis.sourceIdColumn] ?? '') || undefined : undefined,
     })
   }
 

@@ -13,6 +13,7 @@ import { createDevice, deviceHash, handleDailyTasksMcp, listAssignments } from '
 import { flashcardSchema, listFlashcards, upsertFlashcards } from './flashcards'
 import { z } from 'zod'
 import { attemptSchema, getAttempt, putAttemptImage, upsertAttempts } from './attemptRecords'
+import { knowledgeSchema, taskHistorySchema, listKnowledge, upsertKnowledge, listTaskHistory, upsertTaskHistory } from './knowledgeTaskHistory'
 
 type Bindings = {
   AI: Ai
@@ -43,6 +44,34 @@ app.get('/api/daily-tasks/:token', async c => {
   return c.json({ tasks: await listAssignments(c.env.EXAM_DB, hash) })
 })
 
+app.get('/api/knowledge/:token', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  return c.json({ nodes: await listKnowledge(c.env.EXAM_DB, hash) })
+})
+app.post('/api/knowledge/:token/sync', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  const parsed = z.object({ nodes: z.array(knowledgeSchema).max(100) }).safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'Invalid knowledge tree' }, 400)
+  await upsertKnowledge(c.env.EXAM_DB, hash, parsed.data.nodes)
+  return c.json({ saved: parsed.data.nodes.length })
+})
+app.get('/api/task-history/:token', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  const offset = Math.max(0, Number.parseInt(c.req.query('offset') || '0', 10) || 0)
+  return c.json({ tasks: await listTaskHistory(c.env.EXAM_DB, hash, 500, offset) })
+})
+app.post('/api/task-history/:token/sync', async c => {
+  const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
+  if (!hash) return c.json({ error: 'Invalid device token' }, 401)
+  const parsed = z.object({ tasks: z.array(taskHistorySchema).max(50) }).safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'Invalid task history' }, 400)
+  await upsertTaskHistory(c.env.EXAM_DB, hash, parsed.data.tasks)
+  return c.json({ saved: parsed.data.tasks.length })
+})
+
 app.delete('/api/daily-tasks/:token/device', async c => {
   const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
   if (!hash) return c.json({ error: 'Invalid device token' }, 401)
@@ -58,6 +87,8 @@ app.delete('/api/daily-tasks/:token/device', async c => {
     c.env.EXAM_DB.prepare('DELETE FROM daily_task_assignments WHERE token_hash = ?').bind(hash),
     c.env.EXAM_DB.prepare('DELETE FROM flashcards WHERE token_hash = ?').bind(hash),
     c.env.EXAM_DB.prepare('DELETE FROM attempt_records WHERE token_hash = ?').bind(hash),
+    c.env.EXAM_DB.prepare('DELETE FROM knowledge_points WHERE token_hash = ?').bind(hash),
+    c.env.EXAM_DB.prepare('DELETE FROM daily_task_history WHERE token_hash = ?').bind(hash),
     c.env.EXAM_DB.prepare('DELETE FROM daily_task_devices WHERE token_hash = ?').bind(hash),
   ])
   return c.json({ deleted: true })
