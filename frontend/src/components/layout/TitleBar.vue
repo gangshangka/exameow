@@ -30,7 +30,7 @@ function onMouseDown(e: MouseEvent) {
     @mousedown="onMouseDown"
   >
     <router-link to="/practice" class="flex items-center gap-2 no-underline">
-      <img src="/logo.png" alt="Exameow" class="w-5 h-5 rounded-md shrink-0" />
+      <img src="/logo.svg" alt="Exameow" class="w-5 h-5 rounded-md shrink-0" />
       <span class="text-xs font-medium" :style="{ color: 'rgb(var(--md-on-surface-variant))' }">
         {{ i18n.t('appName') }}
       </span>

@@ -15,7 +15,7 @@ import {
   ComputerDesktopIcon,
   AcademicCapIcon,
   MagnifyingGlassIcon,
-  UserCircleIcon,
+  Squares2X2Icon,
   LanguageIcon,
 } from '@heroicons/vue/24/outline'
 
@@ -41,7 +41,7 @@ const navItems = [
   { key: 'navPractice', path: '/practice', icon: AcademicCapIcon },
   { key: 'navGenerate', path: '/generate', icon: SparklesIcon },
   { key: 'navSearch', path: '/search', icon: MagnifyingGlassIcon },
-  { key: 'navMine', path: '/mine', icon: UserCircleIcon },
+  { key: 'navMine', path: '/mine', icon: Squares2X2Icon },
 ]
 
 function isNavActive(item: { path: string }): boolean {
@@ -106,7 +106,7 @@ const headerStyle = {
           to="/practice"
           class="flex items-center gap-3 shrink-0 no-underline group"
         >
-          <img src="/logo.png" alt="Exameow" class="w-[38px] h-[38px] rounded-xl shrink-0 transition-transform duration-300 group-hover:scale-105" />
+          <img src="/logo.svg" alt="Exameow" class="w-[38px] h-[38px] rounded-xl shrink-0 transition-transform duration-300 group-hover:scale-105" />
           <div class="hidden sm:block">
             <div class="text-title-md leading-tight font-bold tracking-tight" style="color: rgb(var(--md-on-surface))">{{ i18n.t('appName') }}</div>
             <div class="text-label-sm" style="color: rgb(var(--md-on-surface-variant))">{{ i18n.t('appSubtitle') }}</div>
