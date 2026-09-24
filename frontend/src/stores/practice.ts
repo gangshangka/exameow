@@ -6,9 +6,15 @@ import type { ColumnMapping, ImportAnalysis } from '@/utils/importParser'
 import { usePracticeHistoryStore } from '@/stores/practiceHistory'
 import { useAttemptStore } from '@/stores/attempts'
 import { matchPracticeFilter, reconcileMockConfig } from '@/utils/practiceFilter'
+import { useWrongQuestionsStore } from './wrongQuestions'
+import { cleanExternalText } from '@/utils/importAdapters'
 
 const STORAGE_KEY = 'exameow-banks'
 const SESSION_KEY = 'exameow-practice-session'
+const fingerprint = (question: Question) => [question.stem, ...question.options]
+  .map(value => cleanExternalText(value).toLowerCase().replace(/\s+/g, ' ')).join('\u241f')
+
+export interface ImportResult { total: number; added: number; duplicates: number; failed: number }
 
 function loadBanks(): QuestionBank[] {
   try {
@@ -29,10 +35,11 @@ function loadBanks(): QuestionBank[] {
   }
 }
 
-function saveBanks(banks: QuestionBank[]) {
+function saveBanks(banks: QuestionBank[]): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(banks))
-  } catch {}
+    return true
+  } catch { return false }
 }
 
 function loadSession(): PracticeSession | null {
@@ -150,6 +157,10 @@ export const usePracticeStore = defineStore('practice', () => {
   const importFileName = ref('')
   const importAnalysis = ref<ImportAnalysis | null>(null)
   const importSource = ref('csv')
+  const importAdapterId = ref<string | null>(null)
+  const importTotalRows = ref(0)
+  const lastImportResult = ref<ImportResult | null>(null)
+  const importStorageError = ref('')
 
   const hasSession = computed(() => session.value !== null)
   const currentQuestion = computed(() => {
@@ -446,6 +457,10 @@ export const usePracticeStore = defineStore('practice', () => {
   function handleAnalysis(analysis: ImportAnalysis | null, fileName: string, source: string): number {
     importFileName.value = fileName
     importSource.value = source
+    importAdapterId.value = analysis?.adapterId ?? null
+    importTotalRows.value = analysis?.rows.filter(row => row.some(cell => cell.trim())).length ?? 0
+    lastImportResult.value = null
+    importStorageError.value = ''
     if (!analysis) {
       importAnalysis.value = null
       importPreview.value = []
@@ -489,18 +504,74 @@ export const usePracticeStore = defineStore('practice', () => {
     return questions.length
   }
 
-  function confirmImport(): string {
+  function confirmImport(batch?: { subject?: string; chapter?: string; sourceName?: string }): string {
     if (!importPreview.value || importPreview.value.length === 0) return ''
+    const questions = importPreview.value.map(question => ({
+      ...question,
+      subject: batch?.subject?.trim() || question.subject,
+      chapter: batch?.chapter?.trim() || question.chapter,
+      sourceName: batch?.sourceName?.trim() || question.sourceName,
+    }))
+    const total = importTotalRows.value || questions.length
+    if (importAdapterId.value === 'external-wrong') {
+      const sourceName = batch?.sourceName?.trim() || '外部小程序错题'
+      const existing = new Map<string, { bankId: string; question: Question }>()
+      for (const bank of banks.value) for (const question of bank.questions) {
+        const key = fingerprint(question)
+        if (!existing.has(key)) existing.set(key, { bankId: bank.id, question })
+      }
+      const added: Question[] = []
+      const duplicateEvents: { bankId: string; questionId: string; sourceId?: string }[] = []
+      let duplicates = 0
+      for (const question of questions) {
+        const key = fingerprint(question)
+        const match = existing.get(key)
+        if (match) {
+          duplicates++
+          const event = { importedAt: Date.now(), sourceId: question.sourceId, sourceName }
+          match.question.externalWrongCount = (match.question.externalWrongCount ?? 0) + 1
+          match.question.externalWrongHistory ??= []
+          match.question.externalWrongHistory.push(event)
+          duplicateEvents.push({ bankId: match.bankId, questionId: match.question.id, sourceId: question.sourceId })
+        } else {
+          question.sourceName = sourceName
+          question.externalWrongCount = 1
+          question.externalWrongHistory = [{ importedAt: Date.now(), sourceId: question.sourceId, sourceName }]
+          added.push(question)
+          existing.set(key, { bankId: '', question })
+        }
+      }
+      const bankId = added.length ? generateId() : ''
+      if (added.length) {
+        banks.value.push({ id: bankId, name: importFileName.value.replace(/\.[^/.]+$/, '') || sourceName,
+          questions: added, createdAt: Date.now(), source: 'external-wrong-import' })
+      }
+      if (!saveBanks(banks.value)) {
+        banks.value = loadBanks()
+        importStorageError.value = '题库保存失败：本地存储空间可能已满'
+        return ''
+      }
+      const wrongStore = useWrongQuestionsStore()
+      for (const event of duplicateEvents) {
+        const id = event.bankId || bankId
+        wrongStore.recordExternalWrong(id, event.questionId, sourceName, event.sourceId)
+      }
+      for (const question of added) wrongStore.recordExternalWrong(bankId, question.id, sourceName, question.sourceId)
+      lastImportResult.value = { total, added: added.length, duplicates, failed: Math.max(0, total - questions.length) }
+      cancelImport()
+      return bankId
+    }
     const source = importSource.value === 'csv' ? 'csv-import' as const : 'xlsx-import' as const
     const nameBase = importFileName.value.replace(/\.[^/.]+$/, '')
     const bank: QuestionBank = {
       id: generateId(),
       name: nameBase || `Imported bank ${new Date().toLocaleDateString()}`,
-      questions: [...importPreview.value],
+      questions,
       createdAt: Date.now(),
       source,
     }
     addBank(bank)
+    lastImportResult.value = { total, added: questions.length, duplicates: 0, failed: Math.max(0, total - questions.length) }
     importPreview.value = null
     importFileName.value = ''
     importAnalysis.value = null
@@ -511,6 +582,8 @@ export const usePracticeStore = defineStore('practice', () => {
     importPreview.value = null
     importFileName.value = ''
     importAnalysis.value = null
+    importAdapterId.value = null
+    importTotalRows.value = 0
   }
 
   return {
@@ -518,6 +591,10 @@ export const usePracticeStore = defineStore('practice', () => {
     session,
     importing,
     importPreview,
+    importAdapterId,
+    importTotalRows,
+    lastImportResult,
+    importStorageError,
     importFileName,
     hasSession,
     currentQuestion,

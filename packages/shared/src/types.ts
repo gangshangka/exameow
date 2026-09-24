@@ -25,6 +25,10 @@ export interface Question {
   subject?: string
   chapter?: string
   difficulty?: Difficulty
+  sourceId?: string
+  sourceName?: string
+  externalWrongCount?: number
+  externalWrongHistory?: { importedAt: number; sourceId?: string; sourceName: string }[]
 }
 
 export interface PracticeFilter {
@@ -40,7 +44,7 @@ export interface QuestionBank {
   name: string
   questions: Question[]
   createdAt: number
-  source: 'ai-generated' | 'csv-import' | 'xlsx-import'
+  source: 'ai-generated' | 'csv-import' | 'xlsx-import' | 'external-wrong-import'
 }
 
 export type PracticeMode = 'sequential' | 'random' | 'mock' | 'wrong'
@@ -53,6 +57,8 @@ export interface WrongQuestionEntry {
   consecutiveCorrect: number
   lastWrongAt: number
   addedAt: number
+  externalWrongCount?: number
+  externalWrongHistory?: { importedAt: number; sourceId?: string; sourceName: string }[]
 }
 
 export interface MockExamConfig {

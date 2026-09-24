@@ -22,6 +22,10 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFile = ref<File | null>(null)
 const parsing = ref(false)
 const parseError = ref('')
+const batchSubject = ref('')
+const batchChapter = ref('')
+const batchSource = ref('外部小程序错题')
+const result = ref<{ total: number; added: number; duplicates: number; failed: number } | null>(null)
 const chapterGroups = computed(() => groupChapters(practiceStore.importPreview ?? []))
 
 const previewHeaders = computed(() => {
@@ -50,6 +54,7 @@ const previewData = computed(() => {
       short_answer: '简答',
     }
     return {
+      sourceId: q.sourceId,
       type: typeLabels[q.type] ?? q.type,
       stem: q.stem.length > 40 ? q.stem.slice(0, 40) + '...' : q.stem,
       options: q.options.join(' / '),
@@ -64,6 +69,7 @@ async function handleFileSelect(e: Event) {
   const file = input.files?.[0]
   if (!file) return
   parseError.value = ''
+  result.value = null
 
   const ext = file.name.split('.').pop()?.toLowerCase()
   if (ext !== 'csv' && ext !== 'xlsx' && ext !== 'xls') {
@@ -101,11 +107,14 @@ function handleMappingApply(mapping: ColumnMapping) {
 }
 
 function handleConfirm() {
+  const external = practiceStore.importAdapterId === 'external-wrong'
   const count = practiceStore.importPreview?.length ?? 0
-  practiceStore.confirmImport()
+  practiceStore.confirmImport({ subject: batchSubject.value, chapter: batchChapter.value, sourceName: batchSource.value })
+  if (practiceStore.importStorageError) { parseError.value = practiceStore.importStorageError; return }
+  result.value = practiceStore.lastImportResult
   selectedFile.value = null
   if (fileInput.value) fileInput.value.value = ''
-  emit('imported', count)
+  if (!external) emit('imported', count)
 }
 
 </script>
@@ -130,7 +139,7 @@ function handleConfirm() {
     />
 
     <div
-      v-if="!selectedFile"
+      v-if="!selectedFile && !result"
       class="card-outlined p-6 text-center cursor-pointer hover:border-[rgb(var(--md-primary))] transition-colors"
       @click="fileInput?.click()"
     >      <DocumentArrowUpIcon class="w-10 h-10 mx-auto mb-3" :style="{ color: 'rgb(var(--md-on-surface-muted))' }" />
@@ -152,6 +161,12 @@ function handleConfirm() {
     <div v-if="parseError" class="card-outlined p-3 text-center" :style="{ borderColor: 'rgb(var(--md-error))', color: 'rgb(var(--md-error))' }">
       {{ parseError }}
     </div>
+    <div v-if="result" class="card-outlined p-4 space-y-2" role="status">
+      <h4 class="font-semibold">导入完成</h4>
+      <p>总题数 {{ result.total }} · 新增 {{ result.added }} · 重复 {{ result.duplicates }} · 失败 {{ result.failed }}</p>
+      <p class="text-sm opacity-70">重复题已在原题上累计一次“外部错题”记录。</p>
+      <button class="btn-filled w-full" @click="emit('imported', result.added)">完成</button>
+    </div>
 
     <ColumnMapper
       v-if="practiceStore.importAnalysis && !parsing"
@@ -171,9 +186,16 @@ function handleConfirm() {
     <p class="text-body-sm" :style="{ color: 'rgb(var(--md-on-surface-variant))' }">{{ i18n.t('practiceChapterImportHint') }}</p>
 
     <template v-if="practiceStore.importPreview && practiceStore.importPreview.length > 0 && !parsing">
+      <div v-if="practiceStore.importAdapterId === 'external-wrong'" class="card-outlined p-3 space-y-2">
+        <p class="font-medium">已识别：外部小程序错题 Excel</p>
+        <p class="text-xs opacity-70">序号保留为来源 ID；分数忽略；选项 A–F 自动映射；HTML 已转成纯文本。</p>
+        <input v-model="batchSubject" class="input-outlined w-full" placeholder="本批学科（可选）" aria-label="本批学科" />
+        <input v-model="batchChapter" class="input-outlined w-full" placeholder="本批章节（可选）" aria-label="本批章节" />
+        <input v-model="batchSource" class="input-outlined w-full" placeholder="来源" aria-label="本批来源" />
+      </div>
       <div class="flex items-center justify-between">
         <span class="text-title-sm" :style="{ color: 'rgb(var(--md-on-surface))' }">
-           {{ i18n.t('practiceImportCount', { n: practiceStore.importPreview.length }) }}
+           {{ i18n.t('practiceImportCount', { n: practiceStore.importPreview.length }) }}<span v-if="practiceStore.importTotalRows > practiceStore.importPreview.length" class="text-xs ml-1">（{{ practiceStore.importTotalRows - practiceStore.importPreview.length }} 条无法转换）</span>
         </span>
         <button class="btn-text text-sm" :style="{ color: 'rgb(var(--md-error))' }" @click="removeFile">
           {{ i18n.t('practiceRemoveFile') }}
@@ -194,7 +216,9 @@ function handleConfirm() {
               <th class="p-2 text-left text-body-sm" :style="{ color: 'rgb(var(--md-on-surface-variant))' }">#</th>
               <th class="p-2 text-left text-body-sm" :style="{ color: 'rgb(var(--md-on-surface-variant))' }">{{ i18n.t('practiceImportColType') }}</th>
               <th class="p-2 text-left text-body-sm" :style="{ color: 'rgb(var(--md-on-surface-variant))' }">{{ i18n.t('practiceImportColStem') }}</th>
+              <th class="p-2 text-left text-body-sm" :style="{ color: 'rgb(var(--md-on-surface-variant))' }">选项</th>
               <th class="p-2 text-left text-body-sm" :style="{ color: 'rgb(var(--md-on-surface-variant))' }">{{ i18n.t('practiceImportColAnswer') }}</th>
+              <th class="p-2 text-left text-body-sm" :style="{ color: 'rgb(var(--md-on-surface-variant))' }">解析</th>
             </tr>
           </thead>
           <tbody>
@@ -203,7 +227,7 @@ function handleConfirm() {
               :key="i"
               :style="{ borderTop: '1px solid rgb(var(--md-outline-variant) / 0.4)' }"
             >
-              <td class="p-2 text-body-sm" :style="{ color: 'rgb(var(--md-on-surface-muted))'}">{{ i + 1 }}</td>
+              <td class="p-2 text-body-sm" :style="{ color: 'rgb(var(--md-on-surface-muted))'}">{{ row.sourceId || i + 1 }}</td>
               <td class="p-2">
                 <span
                   class="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium"
@@ -214,7 +238,9 @@ function handleConfirm() {
                 >{{ row.type }}</span>
               </td>
               <td class="p-2 text-body-sm" :style="{ color: 'rgb(var(--md-on-surface))' }">{{ row.stem }}</td>
+              <td class="p-2 text-body-sm" :style="{ color: 'rgb(var(--md-on-surface))' }">{{ row.options }}</td>
               <td class="p-2 text-body-sm" :style="{ color: 'rgb(var(--md-on-surface))' }">{{ row.answer }}</td>
+              <td class="p-2 text-body-sm" :style="{ color: 'rgb(var(--md-on-surface))' }">{{ row.analysis }}</td>
             </tr>
           </tbody>
         </table>

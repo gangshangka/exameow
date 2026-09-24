@@ -22,6 +22,9 @@ function loadData(): Record<string, Record<string, WrongQuestionEntry>> {
         consecutiveCorrect: typeof value.consecutiveCorrect === 'number' ? value.consecutiveCorrect : 0,
         lastWrongAt: typeof value.lastWrongAt === 'number' ? value.lastWrongAt : 0,
         addedAt: typeof value.addedAt === 'number' ? value.addedAt : 0,
+        externalWrongCount: typeof value.externalWrongCount === 'number' ? value.externalWrongCount : 0,
+        externalWrongHistory: Array.isArray(value.externalWrongHistory) ? value.externalWrongHistory.filter(event => event
+          && typeof event.importedAt === 'number' && typeof event.sourceName === 'string') : [],
       }]
     }))])) as Record<string, Record<string, WrongQuestionEntry>>
   } catch {
@@ -60,6 +63,16 @@ export const useWrongQuestionsStore = defineStore('wrongQuestions', () => {
         addedAt: Date.now(),
       }
     }
+    save()
+  }
+
+  function recordExternalWrong(bankId: string, questionId: string, sourceName: string, sourceId?: string) {
+    recordWrong(bankId, questionId)
+    const entry = data.value[bankId]?.[questionId]
+    if (!entry) return
+    entry.externalWrongCount = (entry.externalWrongCount ?? 0) + 1
+    entry.externalWrongHistory ??= []
+    entry.externalWrongHistory.push({ importedAt: Date.now(), sourceName, sourceId })
     save()
   }
 
@@ -175,6 +188,7 @@ export const useWrongQuestionsStore = defineStore('wrongQuestions', () => {
   return {
     data,
     recordWrong,
+    recordExternalWrong,
     recordCorrect,
     removeWrong,
     clearBank,
