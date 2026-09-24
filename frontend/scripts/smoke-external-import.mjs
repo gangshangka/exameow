@@ -12,7 +12,7 @@ globalThis.localStorage = {
 
 const server = await createServer({ server: { middlewareMode: true }, appType: 'custom', optimizeDeps: { noDiscovery: true } })
 try {
-  const { analyzeExcel, parseWithMapping } = await server.ssrLoadModule('/src/utils/importParser.ts')
+  const { analyzeCSV, analyzeExcel, parseWithMapping } = await server.ssrLoadModule('/src/utils/importParser.ts')
   const { usePracticeStore } = await server.ssrLoadModule('/src/stores/practice.ts')
   const { useWrongQuestionsStore } = await server.ssrLoadModule('/src/stores/wrongQuestions.ts')
   setActivePinia(createPinia())
@@ -33,6 +33,9 @@ try {
   assert.deepEqual(questions[0].options, ['1', '2'])
   assert.equal(questions[0].answer, 'B')
   assert.equal(questions[0].sourceId, '12')
+  const ordinary = analyzeCSV('题干,题型,选项A,选项B,答案,解析\n1+1?,单选题,1,2,B,加法')
+  assert.equal(ordinary?.adapterId, undefined)
+  assert.equal(parseWithMapping(ordinary, ordinary.mapping, 'csv')[0].answer, 'B')
 
   const practice = usePracticeStore()
   await practice.importExcelFile(buffer, 'wrong.xlsx')
