@@ -18,7 +18,7 @@ type Bindings = {
   AI: Ai
   ASSETS: Fetcher
   EXAM_DB: D1Database
-  ATTEMPT_IMAGES: R2Bucket
+  ATTEMPT_IMAGES?: R2Bucket
   CF_ACCOUNT_ID?: string
   CF_API_TOKEN?: string
   ADMIN_TOKEN?: string
@@ -46,12 +46,14 @@ app.get('/api/daily-tasks/:token', async c => {
 app.delete('/api/daily-tasks/:token/device', async c => {
   const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
   if (!hash) return c.json({ error: 'Invalid device token' }, 401)
-  let cursor: string | undefined
-  do {
-    const page = await c.env.ATTEMPT_IMAGES.list({ prefix: `${hash}/`, cursor })
-    if (page.objects.length) await c.env.ATTEMPT_IMAGES.delete(page.objects.map(object => object.key))
-    cursor = page.truncated ? page.cursor : undefined
-  } while (cursor)
+  if (c.env.ATTEMPT_IMAGES) {
+    let cursor: string | undefined
+    do {
+      const page = await c.env.ATTEMPT_IMAGES.list({ prefix: `${hash}/`, cursor })
+      if (page.objects.length) await c.env.ATTEMPT_IMAGES.delete(page.objects.map(object => object.key))
+      cursor = page.truncated ? page.cursor : undefined
+    } while (cursor)
+  }
   await c.env.EXAM_DB.batch([
     c.env.EXAM_DB.prepare('DELETE FROM daily_task_assignments WHERE token_hash = ?').bind(hash),
     c.env.EXAM_DB.prepare('DELETE FROM flashcards WHERE token_hash = ?').bind(hash),
@@ -79,7 +81,10 @@ app.post('/api/attempts/:token/sync', async c => {
   return c.json({ saved: parsed.data.attempts.length })
 })
 
+app.get('/api/attempts/capabilities', c => c.json({ draftImageSync: Boolean(c.env.ATTEMPT_IMAGES) }))
+
 app.put('/api/attempts/:token/:attemptId/images/:id', async c => {
+  if (!c.env.ATTEMPT_IMAGES) return c.json({ error: 'Draft image sync is not enabled' }, 503)
   const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
   if (!hash) return c.json({ error: 'Invalid device token' }, 401)
   const id = c.req.param('id')
@@ -95,6 +100,7 @@ app.put('/api/attempts/:token/:attemptId/images/:id', async c => {
 })
 
 app.delete('/api/attempts/:token/images/:id', async c => {
+  if (!c.env.ATTEMPT_IMAGES) return c.json({ error: 'Draft image sync is not enabled' }, 503)
   const hash = await deviceHash(c.env.EXAM_DB, c.req.param('token'))
   if (!hash) return c.json({ error: 'Invalid device token' }, 401)
   const id = c.req.param('id')

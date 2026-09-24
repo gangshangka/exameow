@@ -39,7 +39,7 @@ export async function listAssignments(db: D1Database, hash: string) {
   return result.results
 }
 
-export async function handleDailyTasksMcp(request: Request, db: D1Database, images: R2Bucket, hash: string): Promise<Response> {
+export async function handleDailyTasksMcp(request: Request, db: D1Database, images: R2Bucket | undefined, hash: string): Promise<Response> {
   const handler = createMcpHandler(() => {
     const server = new McpServer({ name: 'exameow-daily-tasks', version: '1.0.0' }, {
       instructions: 'Use assign_daily_tasks when the user asks to plan or update Exameow daily tasks. Dates use YYYY-MM-DD in the user’s local timezone. Give each task a stable externalId to avoid duplicates. The user starts, pauses, and completes timers in Exameow.',
@@ -119,7 +119,7 @@ export async function handleDailyTasksMcp(request: Request, db: D1Database, imag
         attachments: includeDraftImages ? attempt.attachments : undefined,
       }) }] }
     })
-    server.registerTool('get_attempt_image', {
+    if (images) server.registerTool('get_attempt_image', {
       description: 'Read a draft image from an attempt, only when visual inspection is needed.',
       inputSchema: z.object({ attemptId: z.string(), attachmentId: z.string() }),
       annotations: { readOnlyHint: true, openWorldHint: false },

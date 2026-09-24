@@ -193,6 +193,11 @@ export const useAttemptStore = defineStore('attempts', () => {
         for (const record of batch) syncState[prefix + 'attempt:' + record.id] = record.updatedAt ?? record.startedAt
         localStorage.setItem(SYNC_KEY, JSON.stringify(syncState))
       }
+      const capabilitiesResponse = await fetch(`${base}/api/attempts/capabilities`)
+      if (capabilitiesResponse.ok) {
+        const capabilities = await capabilitiesResponse.json() as { draftImageSync?: boolean }
+        if (!capabilities.draftImageSync) return
+      }
       for (const record of records.value) {
         for (const attachment of record.attachments) {
           const key = prefix + 'image:' + attachment.storageKey
