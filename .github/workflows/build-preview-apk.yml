@@ -1,0 +1,64 @@
+name: Build preview Android APK
+
+on:
+  push:
+    tags:
+      - 'apk-preview-*'
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;27.0.12077973'
+      - name: Init Android project
+        run: |
+          pnpm tauri android init
+          pnpm tauri icon src-tauri/icons/icon.png
+          sed -i 's/#fff/#EE9D62/' src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
+          sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />|' src-tauri/gen/android/app/src/main/AndroidManifest.xml
+      - name: Build Android APK
+        run: pnpm tauri android build --apk --target aarch64
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
+      - name: Sign Android APK
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.keystore
+          mkdir -p dist
+          UNSIGNED_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | head -n 1)
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -n 1)
+          "$BUILD_TOOLS/zipalign" -f -v 4 "$UNSIGNED_APK" dist/Exameow-process-android-arm64.apk
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks release.keystore \
+            --ks-pass "pass:$STORE_PASSWORD" \
+            --key-pass "pass:$STORE_PASSWORD" \
+            --ks-key-alias exameow \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            dist/Exameow-process-android-arm64.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose dist/Exameow-process-android-arm64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exameow-process-android-arm64
+          path: dist/Exameow-process-android-arm64.apk
