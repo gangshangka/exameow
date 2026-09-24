@@ -124,6 +124,12 @@ const router = createRouter({
       meta: { title: 'Flashcards' },
     },
     {
+      path: '/mine/knowledge',
+      name: 'mine-knowledge',
+      component: () => import('@/views/KnowledgeTreeView.vue'),
+      meta: { title: 'Knowledge Tree' },
+    },
+    {
       path: '/config',
       redirect: '/mine/config',
     },

@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAttemptStore } from '@/stores/attempts'
 import { getDraftImage } from '@/utils/attemptAttachments'
+import KnowledgePicker from '@/components/knowledge/KnowledgePicker.vue'
+import { useKnowledgeTreeStore } from '@/stores/knowledgeTree'
 
 const props = defineProps<{ attemptId: string }>()
 const store = useAttemptStore()
+const tree = useKnowledgeTreeStore()
+onMounted(() => { void tree.syncRemote() })
 const attempt = computed(() => store.getAttempt(props.attemptId))
 const tags = ['不会做', '思路不确定', '公式忘了', '建模困难', '方向/符号不确定', '计算乱了', '看不懂题', '时间太长']
 const expanded = ref(false)
@@ -98,6 +102,7 @@ async function removeImage(id: string) {
       <span class="font-medium">📝 我的过程</span><span class="text-sm">{{ expanded ? '收起' : '展开' }}</span>
     </button>
     <div v-if="expanded" class="space-y-4 pt-3">
+      <KnowledgePicker :model-value="attempt.knowledgePointId" label="知识点" @update:model-value="store.setKnowledgePoint(attemptId, $event)" />
       <div>
         <label class="block text-sm mb-1" :for="`attempt-note-${attemptId}`">过程备注</label>
         <textarea :id="`attempt-note-${attemptId}`" class="input-outlined w-full min-h-24 select-text" :value="attempt.notes.find(note => note.type === 'text')?.text ?? ''" placeholder="想到什么就记下来，可留空" @input="store.setTextNote(attemptId, ($event.target as HTMLTextAreaElement).value)" />

@@ -4,11 +4,15 @@ import { useRouter } from 'vue-router'
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline'
 import { localDate, useDailyTasksStore } from '@/stores/dailyTasks'
 import { useAttemptStore } from '@/stores/attempts'
+import { useKnowledgeTreeStore } from '@/stores/knowledgeTree'
+import KnowledgePicker from '@/components/knowledge/KnowledgePicker.vue'
 
 const router = useRouter()
 const store = useDailyTasksStore()
 const attempts = useAttemptStore()
+const tree = useKnowledgeTreeStore()
 const date = ref(localDate())
+const showHistory = ref(false)
 const title = ref('')
 const now = ref(Date.now())
 let interval: ReturnType<typeof setInterval> | undefined
@@ -16,9 +20,18 @@ onMounted(() => {
   interval = setInterval(() => { now.value = Date.now() }, 1000)
   void store.syncAssignments()
   void attempts.syncToMcp()
+  void tree.syncRemote()
 })
 onUnmounted(() => { if (interval) clearInterval(interval) })
-const items = computed(() => store.tasks.filter(task => task.date === date.value).sort((a, b) => a.createdAt - b.createdAt))
+const items = computed(() => (showHistory.value ? [...store.tasks] : store.tasks.filter(task => task.date === date.value))
+  .sort((a, b) => showHistory.value ? b.date.localeCompare(a.date) || b.createdAt - a.createdAt : a.createdAt - b.createdAt))
+const qualityLabels = { not_fluent: '完成但不熟', partial: '部分完成', mastered: '已掌握', retest_tomorrow: '需要明天再测' }
+function updateText(id: string, field: 'reviewNotes' | 'mistakeReason' | 'forgottenPoint' | 'nextAction', event: Event) {
+  store.updateReview(id, { [field]: (event.target as HTMLTextAreaElement).value })
+}
+function updateLinks(id: string, field: 'linkedQuestionIds' | 'linkedFlashcardIds', event: Event) {
+  store.updateReview(id, { [field]: (event.target as HTMLInputElement).value.split(/[，,\s]+/).map(value => value.trim()).filter(Boolean) })
+}
 
 function format(ms: number) {
   const seconds = Math.floor(ms / 1000)
@@ -43,6 +56,10 @@ async function copyMcpUrl() {
     setTimeout(() => { copied.value = false }, 2000)
   } catch { copied.value = false }
 }
+async function connect() {
+  await store.createConnection()
+  if (store.deviceToken) { void store.syncHistory(); void tree.syncRemote() }
+}
 </script>
 
 <template>
@@ -54,7 +71,7 @@ async function copyMcpUrl() {
     <div class="card-outlined p-4 mb-4 space-y-2">
       <h2 class="font-semibold">ChatGPT MCP 派发</h2>
       <p class="text-sm">创建此设备的专属 MCP 地址，在 ChatGPT 自定义插件中填写该地址。请将地址当作密码保管；持有它的人可以派发任务、读写闪卡，并读取已同步的作答记录。</p>
-      <button v-if="!store.deviceToken" type="button" class="btn-tonal !h-9 text-sm" @click="store.createConnection">生成 MCP 地址</button>
+      <button v-if="!store.deviceToken" type="button" class="btn-tonal !h-9 text-sm" @click="connect">生成 MCP 地址</button>
       <template v-else>
         <input class="input-outlined w-full text-xs" readonly :value="store.mcpUrl ?? ''" aria-label="MCP 地址" @focus="($event.target as HTMLInputElement).select()" />
         <div class="flex flex-wrap gap-2">
@@ -73,21 +90,27 @@ async function copyMcpUrl() {
       <p v-if="attempts.syncError" class="text-sm text-red-600">{{ attempts.syncError }}</p>
     </div>
     <div class="card-outlined p-4 mb-4 space-y-3">
-      <label class="block text-sm" for="task-date">日期</label>
-      <input id="task-date" v-model="date" type="date" class="input-outlined" />
+      <div class="flex gap-2">
+        <button type="button" :class="showHistory ? 'btn-outlined' : 'btn-tonal'" @click="showHistory = false">按日期</button>
+        <button type="button" :class="showHistory ? 'btn-tonal' : 'btn-outlined'" @click="showHistory = true">完整历史</button>
+      </div>
+      <label v-if="!showHistory" class="block text-sm" for="task-date">日期</label>
+      <input v-if="!showHistory" id="task-date" v-model="date" type="date" class="input-outlined" />
       <form class="flex gap-2" @submit.prevent="add">
         <input v-model="title" class="input-outlined flex-1" placeholder="添加一项任务" aria-label="任务名称" />
         <button class="btn-tonal" type="submit">添加</button>
       </form>
       <p v-if="store.storageError" class="text-sm text-red-600">{{ store.storageError }}</p>
     </div>
-    <div v-if="!items.length" class="card-outlined p-5 text-sm opacity-70">这一天还没有任务。</div>
+    <div v-if="!items.length" class="card-outlined p-5 text-sm opacity-70">暂无任务记录。</div>
     <div v-for="task in items" :key="task.id" class="card-outlined p-4 mb-3">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="font-semibold break-words">{{ task.title }}</div>
+          <div v-if="showHistory" class="text-xs opacity-70 mt-1">{{ task.date }} · {{ task.status === 'done' ? '已完成' : task.status === 'running' ? '进行中' : '未完成' }}</div>
           <div v-if="task.description" class="text-sm whitespace-pre-wrap mt-1">{{ task.description }}</div>
-          <div class="text-xs opacity-70 mt-1">{{ task.source === 'mcp' ? 'AI 派发' : '手动添加' }}<span v-if="task.plannedMinutes"> · 计划 {{ task.plannedMinutes }} 分钟</span></div>
+          <div class="text-xs opacity-70 mt-1">{{ task.source === 'mcp' ? 'AI 派发' : '手动添加' }}<span v-if="task.plannedMinutes"> · 计划 {{ task.plannedMinutes }} 分钟</span><span v-if="task.dateChanges.length"> · 改期 {{ task.dateChanges.length }} 次</span></div>
+          <div v-if="task.knowledgePointId" class="text-xs mt-1">{{ tree.getPath(task.knowledgePointId) }}</div>
         </div>
         <div class="font-mono tabular-nums shrink-0">{{ format(store.elapsed(task, now)) }}</div>
       </div>
@@ -101,6 +124,24 @@ async function copyMcpUrl() {
         <summary class="cursor-pointer">计时与暂停记录（{{ task.timeSegments.length }} 段）</summary>
         <div v-for="(segment, index) in task.timeSegments" :key="index" class="mt-1">
           {{ new Date(segment.startedAt).toLocaleString() }} → {{ new Date(segment.endedAt).toLocaleString() }} · {{ segment.reason === 'pause' ? '暂停' : '完成' }}
+        </div>
+      </details>
+      <details class="mt-3 text-sm">
+        <summary class="cursor-pointer">复盘与知识点{{ task.completionQuality ? ` · ${qualityLabels[task.completionQuality]}` : '' }}</summary>
+        <div class="space-y-3 mt-3">
+          <KnowledgePicker :model-value="task.knowledgePointId" label="知识点" @update:model-value="store.updateReview(task.id, { knowledgePointId: $event })" />
+          <label class="block">完成质量
+            <select class="input-outlined w-full mt-1" :value="task.completionQuality ?? ''" @change="store.updateReview(task.id, { completionQuality: (($event.target as HTMLSelectElement).value || undefined) as typeof task.completionQuality })">
+              <option value="">未评价</option><option v-for="(label, value) in qualityLabels" :key="value" :value="value">{{ label }}</option>
+            </select>
+          </label>
+          <label v-for="field in ([['mistakeReason','错因'],['forgottenPoint','遗忘点'],['nextAction','下次处理方式'],['reviewNotes','其他复盘'] ] as const)" :key="field[0]" class="block">{{ field[1] }}
+            <textarea class="input-outlined w-full mt-1 min-h-20" :value="task[field[0]]" placeholder="自动保存" @input="updateText(task.id, field[0], $event)" />
+          </label>
+          <label class="block">关联题目 ID（逗号分隔）<input class="input-outlined w-full mt-1" :value="task.linkedQuestionIds.join(', ')" @change="updateLinks(task.id, 'linkedQuestionIds', $event)" /></label>
+          <label class="block">关联闪卡 ID（逗号分隔）<input class="input-outlined w-full mt-1" :value="task.linkedFlashcardIds.join(', ')" @change="updateLinks(task.id, 'linkedFlashcardIds', $event)" /></label>
+          <label v-if="task.status !== 'done'" class="block">改期<input type="date" class="input-outlined w-full mt-1" :value="task.date" @change="store.reschedule(task.id, ($event.target as HTMLInputElement).value)" /></label>
+          <div v-if="task.dateChanges.length" class="text-xs opacity-70">原计划 {{ task.initialDate }} · 改期 {{ task.dateChanges.length }} 次</div>
         </div>
       </details>
     </div>

@@ -363,6 +363,16 @@ export const usePracticeStore = defineStore('practice', () => {
     }
   }
 
+  function setQuestionKnowledgePoint(bankId: string, questionId: string, knowledgePointId?: string) {
+    const originalId = questionId.replace(/-s\d+$/, '')
+    const original = getBank(bankId)?.questions.find(q => q.id === originalId)
+    if (original) { original.knowledgePointId = knowledgePointId; saveBanks(banks.value) }
+    if (session.value?.bankId === bankId) {
+      for (const item of session.value.questions) if (item.question.id.replace(/-s\d+$/, '') === originalId) item.question.knowledgePointId = knowledgePointId
+      saveSession(session.value)
+    }
+  }
+
   function nextQuestion() {
     if (!session.value) return
     if (session.value.currentIndex < session.value.questions.length - 1) {
@@ -529,6 +539,7 @@ export const usePracticeStore = defineStore('practice', () => {
     submitAnswer,
     selfCheck,
     saveAiAnalysis,
+    setQuestionKnowledgePoint,
     nextQuestion,
     prevQuestion,
     goToQuestion,

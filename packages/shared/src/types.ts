@@ -14,6 +14,7 @@ export enum Difficulty {
 
 export interface Question {
   id: string
+  knowledgePointId?: string
   type: QuestionType
   stem: string
   options: string[]
@@ -71,6 +72,7 @@ export interface PracticeSession {
 
 export interface AttemptRecord {
   id: string
+  knowledgePointId?: string
   bankId: string
   questionId: string
   sessionQuestionId: string

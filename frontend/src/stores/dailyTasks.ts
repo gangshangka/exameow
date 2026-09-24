@@ -15,6 +15,17 @@ export interface DailyTask {
   timeSegments: { startedAt: number; endedAt: number; reason: 'pause' | 'complete' }[]
   completedAt?: number
   createdAt: number
+  updatedAt: number
+  initialDate: string
+  dateChanges: { at: number; from: string; to: string }[]
+  completionQuality?: 'not_fluent' | 'partial' | 'mastered' | 'retest_tomorrow'
+  reviewNotes: string
+  mistakeReason: string
+  forgottenPoint: string
+  nextAction: string
+  knowledgePointId?: string
+  linkedQuestionIds: string[]
+  linkedFlashcardIds: string[]
 }
 
 export interface DailyTaskAssignment {
@@ -23,6 +34,7 @@ export interface DailyTaskAssignment {
   description?: string
   externalId?: string
   plannedMinutes?: number
+  knowledgePointId?: string
 }
 
 const KEY = 'exameow-daily-tasks-v1'
@@ -51,6 +63,17 @@ function load(): DailyTask[] {
         && typeof segment.startedAt === 'number' && typeof segment.endedAt === 'number'
         && (segment.reason === 'pause' || segment.reason === 'complete')) : [],
       createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+      updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : (typeof item.completedAt === 'number' ? item.completedAt : item.createdAt),
+      initialDate: typeof item.initialDate === 'string' ? item.initialDate : item.date,
+      dateChanges: Array.isArray(item.dateChanges) ? item.dateChanges.filter(change => change && typeof change.at === 'number' && typeof change.from === 'string' && typeof change.to === 'string') : [],
+      completionQuality: ['not_fluent', 'partial', 'mastered', 'retest_tomorrow'].includes(item.completionQuality || '') ? item.completionQuality : undefined,
+      reviewNotes: typeof item.reviewNotes === 'string' ? item.reviewNotes : '',
+      mistakeReason: typeof item.mistakeReason === 'string' ? item.mistakeReason : '',
+      forgottenPoint: typeof item.forgottenPoint === 'string' ? item.forgottenPoint : '',
+      nextAction: typeof item.nextAction === 'string' ? item.nextAction : '',
+      knowledgePointId: typeof item.knowledgePointId === 'string' ? item.knowledgePointId : undefined,
+      linkedQuestionIds: Array.isArray(item.linkedQuestionIds) ? item.linkedQuestionIds.filter((id): id is string => typeof id === 'string') : [],
+      linkedFlashcardIds: Array.isArray(item.linkedFlashcardIds) ? item.linkedFlashcardIds.filter((id): id is string => typeof id === 'string') : [],
     }))
   } catch { return [] }
 }
@@ -59,32 +82,44 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
   const tasks = ref<DailyTask[]>(load())
   const deviceToken = ref<string | null>((() => { try { return localStorage.getItem(TOKEN_KEY) } catch { return null } })())
   const syncing = ref(false)
+  const historySyncing = ref(false)
   const syncError = ref<string | null>(null)
   const storageError = ref<string | null>(null)
   const todayTasks = computed(() => tasks.value.filter(task => task.date === localDate()))
+  let syncTimer: ReturnType<typeof setTimeout> | undefined
+  let syncAgain = false
 
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(tasks.value)); storageError.value = null }
     catch { storageError.value = '任务保存失败：本地存储空间可能已满' }
+    if (deviceToken.value) {
+      if (syncTimer) clearTimeout(syncTimer)
+      syncTimer = setTimeout(() => { void syncHistory() }, 1200)
+    }
   }
+
+  function touch(task: DailyTask) { task.updatedAt = Math.max(Date.now(), task.updatedAt + 1); save() }
 
   function assignTasks(assignments: DailyTaskAssignment[], source: 'manual' | 'mcp' = 'mcp'): DailyTask[] {
     const assigned: DailyTask[] = []
     for (const input of assignments) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !input.title?.trim()) continue
       const externalId = input.externalId?.trim()
-      const existing = externalId ? tasks.value.find(task => task.source === source && task.externalId === externalId) : undefined
+      const existing = externalId ? tasks.value.find(task => task.source === source && task.externalId === externalId && task.initialDate === input.date) : undefined
       if (existing) {
-        existing.date = input.date
         existing.title = input.title.trim()
         existing.description = input.description?.trim() ?? ''
         existing.plannedMinutes = input.plannedMinutes
+        if (input.knowledgePointId) existing.knowledgePointId = input.knowledgePointId
+        touch(existing)
         assigned.push(existing)
       } else {
         const task: DailyTask = {
           id: newId(), date: input.date, title: input.title.trim(), description: input.description?.trim() ?? '',
           source, externalId, plannedMinutes: input.plannedMinutes, status: 'pending', elapsedMs: 0,
-          timeSegments: [], createdAt: Date.now(),
+          timeSegments: [], createdAt: Date.now(), updatedAt: Date.now(), initialDate: input.date,
+          dateChanges: [], reviewNotes: '', mistakeReason: '', forgottenPoint: '', nextAction: '',
+          knowledgePointId: input.knowledgePointId, linkedQuestionIds: [], linkedFlashcardIds: [],
         }
         tasks.value.push(task)
         assigned.push(task)
@@ -103,7 +138,7 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
     if (!task || task.status === 'running' || task.status === 'done') return
     task.status = 'running'
     task.runningSince = Date.now()
-    save()
+    touch(task)
   }
 
   function pause(id: string) {
@@ -114,7 +149,7 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
     if (task.runningSince) task.timeSegments.push({ startedAt: task.runningSince, endedAt, reason: 'pause' })
     task.runningSince = undefined
     task.status = 'paused'
-    save()
+    touch(task)
   }
 
   function complete(id: string) {
@@ -126,7 +161,53 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
     task.runningSince = undefined
     task.status = 'done'
     task.completedAt = endedAt
-    save()
+    touch(task)
+  }
+
+  function updateReview(id: string, patch: Partial<Pick<DailyTask, 'completionQuality' | 'reviewNotes' | 'mistakeReason' | 'forgottenPoint' | 'nextAction' | 'knowledgePointId' | 'linkedQuestionIds' | 'linkedFlashcardIds'>>) {
+    const task = tasks.value.find(item => item.id === id)
+    if (!task) return
+    Object.assign(task, patch)
+    touch(task)
+  }
+
+  function reschedule(id: string, date: string) {
+    const task = tasks.value.find(item => item.id === id)
+    if (!task || task.status === 'done' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || task.date === date) return
+    task.dateChanges.push({ at: Date.now(), from: task.date, to: date })
+    task.date = date
+    touch(task)
+  }
+
+  async function syncHistory() {
+    const token = deviceToken.value
+    if (!token) return
+    if (historySyncing.value) { syncAgain = true; return }
+    historySyncing.value = true
+    try {
+      for (let offset = 0; ; offset += 500) {
+        const remoteResponse = await fetch(`${RELAY_BASE}/api/task-history/${token}?offset=${offset}`)
+        if (!remoteResponse.ok) throw new Error(`任务历史同步失败：${remoteResponse.status}`)
+        const remote = await remoteResponse.json() as { tasks?: DailyTask[] }
+        if (!Array.isArray(remote.tasks)) throw new Error('服务器返回无效任务历史')
+        for (const incoming of remote.tasks) {
+          if (!incoming || typeof incoming.id !== 'string') continue
+          const index = tasks.value.findIndex(task => task.id === incoming.id)
+          if (index < 0) tasks.value.push(incoming)
+          else if (incoming.updatedAt > tasks.value[index]!.updatedAt) tasks.value[index] = incoming
+        }
+        if (remote.tasks.length < 500) break
+      }
+      for (let i = 0; i < tasks.value.length; i += 50) {
+        const response = await fetch(`${RELAY_BASE}/api/task-history/${token}/sync`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: tasks.value.slice(i, i + 50) }),
+        })
+        if (!response.ok) throw new Error(`任务历史同步失败：${response.status}`)
+      }
+      try { localStorage.setItem(KEY, JSON.stringify(tasks.value)) } catch { storageError.value = '任务保存失败：本地存储空间可能已满' }
+      syncError.value = null
+    } catch (error) { syncError.value = error instanceof Error ? error.message : '任务历史同步失败' }
+    finally { historySyncing.value = false; if (syncAgain) { syncAgain = false; void syncHistory() } }
   }
 
   const mcpUrl = computed(() => deviceToken.value ? `${RELAY_BASE}/mcp/${deviceToken.value}` : null)
@@ -151,13 +232,14 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
       const response = await fetch(`${RELAY_BASE}/api/daily-tasks/${deviceToken.value}`)
       if (!response.ok) throw new Error(`同步失败：${response.status}`)
       const body = await response.json() as { tasks?: Array<{
-        id: string; date: string; title: string; description: string; plannedMinutes?: number
+        id: string; date: string; title: string; description: string; plannedMinutes?: number; knowledgePointId?: string
       }> }
       if (!Array.isArray(body.tasks)) throw new Error('服务器返回无效任务数据')
       assignTasks(body.tasks.map(task => ({
         date: task.date, title: task.title, description: task.description,
-        plannedMinutes: task.plannedMinutes, externalId: task.id,
+        plannedMinutes: task.plannedMinutes, externalId: task.id, knowledgePointId: task.knowledgePointId,
       })), 'mcp')
+      await syncHistory()
     } catch (error) { syncError.value = error instanceof Error ? error.message : '同步失败' }
     finally { syncing.value = false }
   }
@@ -173,5 +255,5 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
     } catch (error) { syncError.value = error instanceof Error ? error.message : '撤销失败' }
   }
 
-  return { tasks, todayTasks, storageError, deviceToken, syncing, syncError, mcpUrl, createConnection, revokeConnection, syncAssignments, assignTasks, elapsed, start, pause, complete }
+  return { tasks, todayTasks, storageError, deviceToken, syncing, syncError, mcpUrl, createConnection, revokeConnection, syncAssignments, syncHistory, assignTasks, elapsed, start, pause, complete, updateReview, reschedule }
 })

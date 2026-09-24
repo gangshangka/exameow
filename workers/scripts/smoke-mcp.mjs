@@ -22,6 +22,27 @@ const task = await mcp('tools/call', { name: 'assign_daily_tasks', arguments: { 
 assert(!task.error, `assign task: ${JSON.stringify(task)}`)
 const assignments = await fetch(`${base}/api/daily-tasks/${device.token}`).then(r => r.json())
 assert(assignments.tasks?.length === 1, 'task persisted')
+await mcp('tools/call', { name: 'assign_daily_tasks', arguments: { tasks: [{ date: '2026-09-25', title: '复习函数第二轮', externalId: 'today-functions', plannedMinutes: 15 }] } })
+const repeatedAssignments = await fetch(`${base}/api/daily-tasks/${device.token}`).then(r => r.json())
+assert(repeatedAssignments.tasks?.length === 2, 'same external ID on another day keeps task history')
+const node = { id: 'smoke-knowledge', parentId: null, name: '普通物理', createdAt: Date.now(), updatedAt: Date.now() }
+const knowledgeSync = await fetch(`${base}/api/knowledge/${device.token}/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nodes: [node] }) })
+assert(knowledgeSync.ok, `knowledge sync ${knowledgeSync.status}`)
+const knowledge = await mcp('tools/call', { name: 'list_knowledge_points', arguments: {} })
+assert(JSON.parse(knowledge.result.content[0].text).some(item => item.id === node.id), 'knowledge MCP read')
+const createdKnowledge = await mcp('tools/call', { name: 'create_knowledge_point', arguments: { name: '电磁学', parentId: node.id } })
+assert(JSON.parse(createdKnowledge.result.content[0].text).parentId === node.id, 'knowledge MCP create')
+const history = {
+  id: 'smoke-history', date: '2026-09-24', initialDate: '2026-09-23', title: '复习函数', description: '', source: 'mcp',
+  status: 'done', elapsedMs: 120000, timeSegments: [{ startedAt: 1000, endedAt: 121000, reason: 'complete' }],
+  completedAt: 121000, createdAt: 1000, updatedAt: Date.now(), dateChanges: [{ at: 500, from: '2026-09-23', to: '2026-09-24' }],
+  completionQuality: 'not_fluent', reviewNotes: '', mistakeReason: '漏一级标题', forgottenPoint: '儿童世纪', nextAction: '先默写标题',
+  knowledgePointId: node.id, linkedQuestionIds: [], linkedFlashcardIds: [],
+}
+const historySync = await fetch(`${base}/api/task-history/${device.token}/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: [history] }) })
+assert(historySync.ok, `history sync ${historySync.status}`)
+const historyResult = await mcp('tools/call', { name: 'get_task_history', arguments: { id: history.id } })
+assert(JSON.parse(historyResult.result.content[0].text).mistakeReason === '漏一级标题', 'history MCP read')
 const flashcard = await mcp('tools/call', { name: 'create_flashcard', arguments: { front: '动能公式', back: 'E=mv²/2' } })
 assert(!flashcard.error, 'flashcard create')
 const cardId = JSON.parse(flashcard.result.content[0].text).id
