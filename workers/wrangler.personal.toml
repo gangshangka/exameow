@@ -17,6 +17,10 @@ database_name = "exameow-personal-mcp"
 database_id = "ddbeaa68-b933-4dbf-a6c1-bd1e4cc5be8c"
 migrations_dir = "migrations"
 
+[[r2_buckets]]
+binding = "ATTEMPT_IMAGES"
+bucket_name = "exameow-personal-attempt-images"
+
 [triggers]
 crons = ["15 4 * * *"]
 
