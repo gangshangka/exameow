@@ -3,7 +3,7 @@ name: Build preview Android APK
 on:
   push:
     tags:
-      - 'apk-preview-*'
+      - 'apk-personal-*'
 
 jobs:
   android:
@@ -39,6 +39,7 @@ jobs:
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
+          VITE_DAILY_TASKS_RELAY: https://exameow-personal-mcp.brearleysailsbury45969.workers.dev
       - name: Sign Android APK
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -48,7 +49,7 @@ jobs:
           mkdir -p dist
           UNSIGNED_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' | head -n 1)
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -type d | sort -V | tail -n 1)
-          "$BUILD_TOOLS/zipalign" -f -v 4 "$UNSIGNED_APK" dist/Exameow-process-android-arm64.apk
+          "$BUILD_TOOLS/zipalign" -f -v 4 "$UNSIGNED_APK" dist/Exameow-process-cloudflare-arm64.apk
           "$BUILD_TOOLS/apksigner" sign \
             --ks release.keystore \
             --ks-pass "pass:$STORE_PASSWORD" \
@@ -56,9 +57,9 @@ jobs:
             --ks-key-alias exameow \
             --v1-signing-enabled true \
             --v2-signing-enabled true \
-            dist/Exameow-process-android-arm64.apk
-          "$BUILD_TOOLS/apksigner" verify --verbose dist/Exameow-process-android-arm64.apk
+            dist/Exameow-process-cloudflare-arm64.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose dist/Exameow-process-cloudflare-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: exameow-process-android-arm64
-          path: dist/Exameow-process-android-arm64.apk
+          name: exameow-process-cloudflare-arm64
+          path: dist/Exameow-process-cloudflare-arm64.apk
