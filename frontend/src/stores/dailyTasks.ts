@@ -9,11 +9,13 @@ export interface DailyTask {
   source: 'manual' | 'mcp'
   externalId?: string
   plannedMinutes?: number
-  status: 'pending' | 'running' | 'paused' | 'done'
+  status: 'pending' | 'running' | 'paused' | 'done' | 'cancelled'
   elapsedMs: number
   runningSince?: number
   timeSegments: { startedAt: number; endedAt: number; reason: 'pause' | 'complete' }[]
   completedAt?: number
+  cancelledAt?: number
+  cancellationReason?: string
   createdAt: number
   updatedAt: number
   initialDate: string
@@ -26,6 +28,16 @@ export interface DailyTask {
   knowledgePointId?: string
   linkedQuestionIds: string[]
   linkedFlashcardIds: string[]
+  feedback: TaskFeedback[]
+}
+
+export interface TaskFeedback {
+  id: string
+  type: 'comment' | 'request_cancel' | 'request_adjust'
+  text: string
+  createdAt: number
+  handledAt?: number
+  aiReply?: string
 }
 
 export interface DailyTaskAssignment {
@@ -35,6 +47,7 @@ export interface DailyTaskAssignment {
   externalId?: string
   plannedMinutes?: number
   knowledgePointId?: string
+  updatedAt?: number
 }
 
 const KEY = 'exameow-daily-tasks-v1'
@@ -56,14 +69,16 @@ function load(): DailyTask[] {
       ...item,
       description: typeof item.description === 'string' ? item.description : '',
       source: item.source === 'mcp' ? 'mcp' : 'manual',
-      status: ['pending', 'running', 'paused', 'done'].includes(item.status) ? item.status : 'pending',
+      status: ['pending', 'running', 'paused', 'done', 'cancelled'].includes(item.status) ? item.status : 'pending',
       elapsedMs: typeof item.elapsedMs === 'number' && Number.isFinite(item.elapsedMs) ? Math.max(0, item.elapsedMs) : 0,
       runningSince: typeof item.runningSince === 'number' ? item.runningSince : undefined,
       timeSegments: Array.isArray(item.timeSegments) ? item.timeSegments.filter(segment => segment
         && typeof segment.startedAt === 'number' && typeof segment.endedAt === 'number'
         && (segment.reason === 'pause' || segment.reason === 'complete')) : [],
       createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
-      updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : (typeof item.completedAt === 'number' ? item.completedAt : item.createdAt),
+      updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : (typeof item.completedAt === 'number' ? item.completedAt : typeof item.createdAt === 'number' ? item.createdAt : Date.now()),
+      cancelledAt: typeof item.cancelledAt === 'number' ? item.cancelledAt : undefined,
+      cancellationReason: typeof item.cancellationReason === 'string' ? item.cancellationReason : undefined,
       initialDate: typeof item.initialDate === 'string' ? item.initialDate : item.date,
       dateChanges: Array.isArray(item.dateChanges) ? item.dateChanges.filter(change => change && typeof change.at === 'number' && typeof change.from === 'string' && typeof change.to === 'string') : [],
       completionQuality: ['not_fluent', 'partial', 'mastered', 'retest_tomorrow'].includes(item.completionQuality || '') ? item.completionQuality : undefined,
@@ -74,6 +89,9 @@ function load(): DailyTask[] {
       knowledgePointId: typeof item.knowledgePointId === 'string' ? item.knowledgePointId : undefined,
       linkedQuestionIds: Array.isArray(item.linkedQuestionIds) ? item.linkedQuestionIds.filter((id): id is string => typeof id === 'string') : [],
       linkedFlashcardIds: Array.isArray(item.linkedFlashcardIds) ? item.linkedFlashcardIds.filter((id): id is string => typeof id === 'string') : [],
+      feedback: Array.isArray(item.feedback) ? item.feedback.filter(entry => entry && typeof entry.id === 'string'
+        && ['comment', 'request_cancel', 'request_adjust'].includes(entry.type) && typeof entry.text === 'string'
+        && typeof entry.createdAt === 'number') : [],
     }))
   } catch { return [] }
 }
@@ -105,13 +123,15 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
     for (const input of assignments) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !input.title?.trim()) continue
       const externalId = input.externalId?.trim()
-      const existing = externalId ? tasks.value.find(task => task.source === source && task.externalId === externalId && task.initialDate === input.date) : undefined
+      const existing = externalId ? tasks.value.find(task => task.source === source && task.externalId === externalId) : undefined
       if (existing) {
-        existing.title = input.title.trim()
-        existing.description = input.description?.trim() ?? ''
-        existing.plannedMinutes = input.plannedMinutes
-        if (input.knowledgePointId) existing.knowledgePointId = input.knowledgePointId
-        touch(existing)
+        if (existing.status !== 'cancelled' && (input.updatedAt ?? 0) > existing.updatedAt) {
+          existing.title = input.title.trim()
+          existing.description = input.description?.trim() ?? ''
+          existing.plannedMinutes = input.plannedMinutes
+          existing.knowledgePointId = input.knowledgePointId
+          touch(existing)
+        }
         assigned.push(existing)
       } else {
         const task: DailyTask = {
@@ -119,7 +139,7 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
           source, externalId, plannedMinutes: input.plannedMinutes, status: 'pending', elapsedMs: 0,
           timeSegments: [], createdAt: Date.now(), updatedAt: Date.now(), initialDate: input.date,
           dateChanges: [], reviewNotes: '', mistakeReason: '', forgottenPoint: '', nextAction: '',
-          knowledgePointId: input.knowledgePointId, linkedQuestionIds: [], linkedFlashcardIds: [],
+          knowledgePointId: input.knowledgePointId, linkedQuestionIds: [], linkedFlashcardIds: [], feedback: [],
         }
         tasks.value.push(task)
         assigned.push(task)
@@ -135,7 +155,7 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
 
   function start(id: string) {
     const task = tasks.value.find(item => item.id === id)
-    if (!task || task.status === 'running' || task.status === 'done') return
+    if (!task || task.status === 'running' || task.status === 'done' || task.status === 'cancelled') return
     task.status = 'running'
     task.runningSince = Date.now()
     touch(task)
@@ -154,7 +174,7 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
 
   function complete(id: string) {
     const task = tasks.value.find(item => item.id === id)
-    if (!task || task.status === 'done') return
+    if (!task || task.status === 'done' || task.status === 'cancelled') return
     const endedAt = Date.now()
     task.elapsedMs = elapsed(task, endedAt)
     if (task.runningSince) task.timeSegments.push({ startedAt: task.runningSince, endedAt, reason: 'complete' })
@@ -171,9 +191,18 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
     touch(task)
   }
 
+  function addFeedback(id: string, type: TaskFeedback['type'], text: string) {
+    const task = tasks.value.find(item => item.id === id)
+    const clean = text.trim()
+    if (!task || !clean || clean.length > 2000 || task.status === 'cancelled') return
+    if (type === 'request_cancel' && task.status === 'running') pause(id)
+    task.feedback.push({ id: newId(), type, text: clean, createdAt: Date.now() })
+    touch(task)
+  }
+
   function reschedule(id: string, date: string) {
     const task = tasks.value.find(item => item.id === id)
-    if (!task || task.status === 'done' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || task.date === date) return
+    if (!task || task.status === 'done' || task.status === 'cancelled' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || task.date === date) return
     task.dateChanges.push({ at: Date.now(), from: task.date, to: date })
     task.date = date
     touch(task)
@@ -192,6 +221,7 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
         if (!Array.isArray(remote.tasks)) throw new Error('服务器返回无效任务历史')
         for (const incoming of remote.tasks) {
           if (!incoming || typeof incoming.id !== 'string') continue
+          incoming.feedback = Array.isArray(incoming.feedback) ? incoming.feedback : []
           const index = tasks.value.findIndex(task => task.id === incoming.id)
           if (index < 0) tasks.value.push(incoming)
           else if (incoming.updatedAt > tasks.value[index]!.updatedAt) tasks.value[index] = incoming
@@ -229,17 +259,17 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
     syncing.value = true
     syncError.value = null
     try {
+      await syncHistory()
       const response = await fetch(`${RELAY_BASE}/api/daily-tasks/${deviceToken.value}`)
       if (!response.ok) throw new Error(`同步失败：${response.status}`)
       const body = await response.json() as { tasks?: Array<{
-        id: string; date: string; title: string; description: string; plannedMinutes?: number; knowledgePointId?: string
+        id: string; date: string; title: string; description: string; plannedMinutes?: number; knowledgePointId?: string; updatedAt?: number
       }> }
       if (!Array.isArray(body.tasks)) throw new Error('服务器返回无效任务数据')
       assignTasks(body.tasks.map(task => ({
         date: task.date, title: task.title, description: task.description,
-        plannedMinutes: task.plannedMinutes, externalId: task.id, knowledgePointId: task.knowledgePointId,
+        plannedMinutes: task.plannedMinutes, externalId: task.id, knowledgePointId: task.knowledgePointId, updatedAt: task.updatedAt,
       })), 'mcp')
-      await syncHistory()
     } catch (error) { syncError.value = error instanceof Error ? error.message : '同步失败' }
     finally { syncing.value = false }
   }
@@ -255,5 +285,5 @@ export const useDailyTasksStore = defineStore('dailyTasks', () => {
     } catch (error) { syncError.value = error instanceof Error ? error.message : '撤销失败' }
   }
 
-  return { tasks, todayTasks, storageError, deviceToken, syncing, syncError, mcpUrl, createConnection, revokeConnection, syncAssignments, syncHistory, assignTasks, elapsed, start, pause, complete, updateReview, reschedule }
+  return { tasks, todayTasks, storageError, deviceToken, syncing, syncError, mcpUrl, createConnection, revokeConnection, syncAssignments, syncHistory, assignTasks, elapsed, start, pause, complete, updateReview, addFeedback, reschedule }
 })

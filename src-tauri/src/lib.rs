@@ -716,7 +716,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_sharekit::init())
-        .plugin(tauri_plugin_screenrecord::init());
+        .plugin(tauri_plugin_screenrecord::init())
+        .plugin(tauri_plugin_studytools::init());
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())

@@ -34,15 +34,22 @@ const createdKnowledge = await mcp('tools/call', { name: 'create_knowledge_point
 assert(JSON.parse(createdKnowledge.result.content[0].text).parentId === node.id, 'knowledge MCP create')
 const history = {
   id: 'smoke-history', date: '2026-09-24', initialDate: '2026-09-23', title: '复习函数', description: '', source: 'mcp',
-  status: 'done', elapsedMs: 120000, timeSegments: [{ startedAt: 1000, endedAt: 121000, reason: 'complete' }],
-  completedAt: 121000, createdAt: 1000, updatedAt: Date.now(), dateChanges: [{ at: 500, from: '2026-09-23', to: '2026-09-24' }],
+  status: 'paused', elapsedMs: 120000, timeSegments: [{ startedAt: 1000, endedAt: 121000, reason: 'pause' }],
+  createdAt: 1000, updatedAt: Date.now(), dateChanges: [{ at: 500, from: '2026-09-23', to: '2026-09-24' }],
   completionQuality: 'not_fluent', reviewNotes: '', mistakeReason: '漏一级标题', forgottenPoint: '儿童世纪', nextAction: '先默写标题',
   knowledgePointId: node.id, linkedQuestionIds: [], linkedFlashcardIds: [],
+  feedback: [{ id: 'smoke-feedback', type: 'request_adjust', text: '请缩短到十分钟', createdAt: Date.now() }],
 }
 const historySync = await fetch(`${base}/api/task-history/${device.token}/sync`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: [history] }) })
 assert(historySync.ok, `history sync ${historySync.status}`)
 const historyResult = await mcp('tools/call', { name: 'get_task_history', arguments: { id: history.id } })
 assert(JSON.parse(historyResult.result.content[0].text).mistakeReason === '漏一级标题', 'history MCP read')
+const pendingFeedback = await mcp('tools/call', { name: 'list_pending_task_feedback', arguments: {} })
+assert(JSON.parse(pendingFeedback.result.content[0].text).some(item => item.feedback.id === 'smoke-feedback'), 'feedback MCP read')
+const adjusted = await mcp('tools/call', { name: 'update_daily_task', arguments: { id: history.id, plannedMinutes: 10, feedbackId: 'smoke-feedback', reply: '已缩短' } })
+assert(JSON.parse(adjusted.result.content[0].text).plannedMinutes === 10, 'task MCP adjust')
+const cancelled = await mcp('tools/call', { name: 'cancel_daily_task', arguments: { id: history.id, reason: '计划重排' } })
+assert(JSON.parse(cancelled.result.content[0].text).status === 'cancelled', 'task MCP cancel')
 const flashcard = await mcp('tools/call', { name: 'create_flashcard', arguments: { front: '动能公式', back: 'E=mv²/2' } })
 assert(!flashcard.error, 'flashcard create')
 const cardId = JSON.parse(flashcard.result.content[0].text).id

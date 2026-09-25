@@ -1,6 +1,6 @@
 [package]
 name = "exameow"
-version = "1.5.0"
+version = "1.6.0"
 description = "AI-powered exam question generator"
 edition = "2021"
 
@@ -19,6 +19,7 @@ tauri-plugin-fs = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-sharekit = "0.3"
 tauri-plugin-screenrecord = { path = "../plugins/screenrecord" }
+tauri-plugin-studytools = { path = "../plugins/studytools" }
 exameow-core = { path = "../packages/core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

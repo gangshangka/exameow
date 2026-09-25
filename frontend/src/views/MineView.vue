@@ -44,6 +44,10 @@ const entries = [
       <div class="font-bold">🌳 知识树</div>
       <div class="text-sm mt-1" style="color: rgb(var(--md-on-surface-variant))">管理科目、章节、考点和子考点</div>
     </button>
+    <button class="card-filled w-full p-4 sm:p-5 mb-3.5 text-left" @click="router.push('/mine/stats')">
+      <div class="font-bold">📊 学习统计</div>
+      <div class="text-sm mt-1" style="color: rgb(var(--md-on-surface-variant))">任务热力图与安卓 App 使用时长</div>
+    </button>
     <div class="space-y-3.5">
       <button
         v-for="e in entries"

@@ -1,0 +1,7 @@
+ALTER TABLE daily_task_assignments ADD COLUMN cancelled_at INTEGER;
+ALTER TABLE flashcards ADD COLUMN due_at INTEGER;
+ALTER TABLE flashcards ADD COLUMN review_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE flashcards ADD COLUMN lapse_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE flashcards ADD COLUMN interval_days INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE flashcards ADD COLUMN ease_factor REAL NOT NULL DEFAULT 2.5;
+ALTER TABLE flashcards ADD COLUMN review_history TEXT NOT NULL DEFAULT '[]';
