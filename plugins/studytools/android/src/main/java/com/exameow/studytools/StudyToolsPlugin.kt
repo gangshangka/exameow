@@ -15,6 +15,7 @@ import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import org.json.JSONArray
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -43,12 +44,20 @@ class StudyToolsPlugin(private val activity: Activity) : Plugin(activity) {
     Thread {
       try {
         val now = System.currentTimeMillis()
-        val start = now - days * 86_400_000L
+        // Calendar days in the device timezone, including today. A rolling 24-hour
+        // window can include part of an extra day and makes "today" ambiguous.
+        val start = Calendar.getInstance().apply {
+          set(Calendar.HOUR_OF_DAY, 0)
+          set(Calendar.MINUTE, 0)
+          set(Calendar.SECOND, 0)
+          set(Calendar.MILLISECOND, 0)
+          add(Calendar.DAY_OF_YEAR, 1 - days)
+        }.timeInMillis
         val manager = activity.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val apps = JSONArray()
         for (entry in manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, now).orEmpty()) {
-          if (entry.totalTimeInForeground <= 0 || entry.lastTimeStamp < start) continue
+          if (entry.totalTimeInForeground <= 0 || entry.firstTimeStamp < start) continue
           val label = try {
             activity.packageManager.getApplicationLabel(
               activity.packageManager.getApplicationInfo(entry.packageName, 0)

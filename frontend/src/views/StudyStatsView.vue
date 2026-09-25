@@ -5,7 +5,7 @@ import { ArrowLeftIcon } from '@heroicons/vue/24/outline'
 import { useDailyTasksStore } from '@/stores/dailyTasks'
 import { useAttemptStore } from '@/stores/attempts'
 import { useFlashcardsStore } from '@/stores/flashcards'
-import { getDayActivity } from '@/utils/studyHeatmap'
+import { dayKey, getDayActivity } from '@/utils/studyHeatmap'
 import { getAndroidUsage, hasUsageAccess, openUsageAccessSettings, usageAvailable, type AppUsage } from '@/utils/androidUsage'
 
 const router = useRouter()
@@ -30,11 +30,13 @@ const supported = usageAvailable()
 const access = ref(false)
 const usage = ref<AppUsage[]>([])
 const usageDays = ref(7)
+const today = ref(dayKey(Date.now()))
 const usageError = ref('')
 const loading = ref(false)
 const byApp = computed(() => {
   const entries = new Map<string, { packageName: string; label: string; minutes: number }>()
   for (const item of usage.value) {
+    if (usageDays.value === 1 && item.date !== today.value) continue
     const current = entries.get(item.packageName) ?? { packageName: item.packageName, label: item.label, minutes: 0 }
     current.minutes += item.minutes
     entries.set(item.packageName, current)
@@ -43,6 +45,7 @@ const byApp = computed(() => {
 })
 async function refreshUsage() {
   if (!supported) return
+  today.value = dayKey(Date.now())
   loading.value = true
   usageError.value = ''
   try {
@@ -72,7 +75,8 @@ onMounted(() => { void refreshUsage() })
       <template v-else>
         <p class="text-xs opacity-70">需要在安卓设置中授予“使用情况访问权限”。数据仅在本机读取和展示，不同步到 MCP。</p>
         <button v-if="!access" class="btn-tonal !h-9 text-sm" @click="openUsageAccessSettings">打开授权设置</button>
-        <div class="flex gap-2 items-center"><select v-model.number="usageDays" class="input-outlined" aria-label="统计天数"><option :value="7">近 7 天</option><option :value="30">近 30 天</option></select><button class="btn-outlined !h-9 text-sm" :disabled="loading" @click="refreshUsage">{{ loading ? '读取中…' : '刷新使用时长' }}</button></div>
+        <div class="flex gap-2 items-center"><select v-model.number="usageDays" class="input-outlined" aria-label="统计天数" :disabled="loading" @change="refreshUsage"><option :value="1">今天</option><option :value="7">近 7 天（含今天）</option><option :value="30">近 30 天（含今天）</option></select><button class="btn-outlined !h-9 text-sm" :disabled="loading" @click="refreshUsage">{{ loading ? '读取中…' : '刷新使用时长' }}</button></div>
+        <p v-if="access" class="text-sm">{{ usageDays === 1 ? `${today} 今天` : `近 ${usageDays} 天` }} · 合计 {{ Math.round(byApp.reduce((sum, app) => sum + app.minutes, 0)) }} 分钟</p>
         <p v-if="usageError" class="text-sm text-red-600">{{ usageError }}</p>
         <p v-if="access && !byApp.length" class="text-sm opacity-70">当前时间段没有可读取的 App 使用记录。</p>
         <div v-for="app in byApp" :key="app.packageName" class="flex items-center justify-between gap-3 border-b py-2 text-sm"><div class="min-w-0"><div class="truncate">{{ app.label }}</div><div class="text-xs opacity-60 truncate">{{ app.packageName }}</div></div><span class="shrink-0">{{ Math.round(app.minutes) }} 分钟</span></div>
