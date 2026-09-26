@@ -130,6 +130,12 @@ const router = createRouter({
       meta: { title: 'Knowledge Tree' },
     },
     {
+      path: '/mine/stats',
+      name: 'mine-stats',
+      component: () => import('@/views/StudyStatsView.vue'),
+      meta: { title: 'Study Statistics' },
+    },
+    {
       path: '/config',
       redirect: '/mine/config',
     },

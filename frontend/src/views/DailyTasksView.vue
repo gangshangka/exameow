@@ -14,6 +14,7 @@ const tree = useKnowledgeTreeStore()
 const date = ref(localDate())
 const showHistory = ref(false)
 const title = ref('')
+const feedbackText = ref<Record<string, string>>({})
 const now = ref(Date.now())
 let interval: ReturnType<typeof setInterval> | undefined
 onMounted(() => {
@@ -44,6 +45,12 @@ function add() {
   if (!title.value.trim()) return
   store.assignTasks([{ date: date.value, title: title.value }], 'manual')
   title.value = ''
+}
+function sendFeedback(id: string, type: 'comment' | 'request_cancel' | 'request_adjust') {
+  const text = feedbackText.value[id] ?? ''
+  if (!text.trim()) return
+  store.addFeedback(id, type, text)
+  feedbackText.value[id] = ''
 }
 
 const copied = ref(false)
@@ -107,7 +114,7 @@ async function connect() {
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="font-semibold break-words">{{ task.title }}</div>
-          <div v-if="showHistory" class="text-xs opacity-70 mt-1">{{ task.date }} · {{ task.status === 'done' ? '已完成' : task.status === 'running' ? '进行中' : '未完成' }}</div>
+          <div v-if="showHistory" class="text-xs opacity-70 mt-1">{{ task.date }} · {{ task.status === 'done' ? '已完成' : task.status === 'cancelled' ? '已取消' : task.status === 'running' ? '进行中' : '未完成' }}</div>
           <div v-if="task.description" class="text-sm whitespace-pre-wrap mt-1">{{ task.description }}</div>
           <div class="text-xs opacity-70 mt-1">{{ task.source === 'mcp' ? 'AI 派发' : '手动添加' }}<span v-if="task.plannedMinutes"> · 计划 {{ task.plannedMinutes }} 分钟</span><span v-if="task.dateChanges.length"> · 改期 {{ task.dateChanges.length }} 次</span></div>
           <div v-if="task.knowledgePointId" class="text-xs mt-1">{{ tree.getPath(task.knowledgePointId) }}</div>
@@ -117,13 +124,30 @@ async function connect() {
       <div class="flex gap-2 mt-3">
         <button v-if="task.status === 'pending' || task.status === 'paused'" class="btn-tonal !h-9 text-sm" @click="store.start(task.id)">{{ task.status === 'paused' ? '继续' : '开始计时' }}</button>
         <button v-if="task.status === 'running'" class="btn-outlined !h-9 text-sm" @click="store.pause(task.id)">暂停</button>
-        <button v-if="task.status !== 'done'" class="btn-filled !h-9 text-sm" @click="store.complete(task.id)">完成</button>
-        <span v-else class="text-sm">已完成</span>
+        <button v-if="task.status !== 'done' && task.status !== 'cancelled'" class="btn-filled !h-9 text-sm" @click="store.complete(task.id)">完成</button>
+        <span v-else class="text-sm">{{ task.status === 'cancelled' ? '已取消' : '已完成' }}</span>
       </div>
       <details v-if="task.timeSegments.length" class="text-xs mt-3">
         <summary class="cursor-pointer">计时与暂停记录（{{ task.timeSegments.length }} 段）</summary>
         <div v-for="(segment, index) in task.timeSegments" :key="index" class="mt-1">
           {{ new Date(segment.startedAt).toLocaleString() }} → {{ new Date(segment.endedAt).toLocaleString() }} · {{ segment.reason === 'pause' ? '暂停' : '完成' }}
+        </div>
+      </details>
+      <details v-if="task.source === 'mcp'" class="mt-3 text-sm">
+        <summary class="cursor-pointer">给 AI 留言{{ task.feedback?.some(item => !item.handledAt) ? ' · 待处理' : '' }}</summary>
+        <div class="space-y-2 mt-3">
+          <textarea v-if="task.status !== 'cancelled'" v-model="feedbackText[task.id]" maxlength="2000" class="input-outlined w-full min-h-20" placeholder="说明为什么想取消或怎样调整任务" />
+          <div v-if="task.status !== 'cancelled'" class="flex flex-wrap gap-2">
+            <button class="btn-tonal !h-9 text-sm" :disabled="!feedbackText[task.id]?.trim()" @click="sendFeedback(task.id, 'comment')">发送备注</button>
+            <button class="btn-outlined !h-9 text-sm" :disabled="!feedbackText[task.id]?.trim()" @click="sendFeedback(task.id, 'request_adjust')">请求调整</button>
+            <button class="btn-outlined !h-9 text-sm" :disabled="!feedbackText[task.id]?.trim()" @click="sendFeedback(task.id, 'request_cancel')">请求取消</button>
+          </div>
+          <p v-if="task.status === 'cancelled'" class="text-xs">AI 已取消：{{ task.cancellationReason || '未填写原因' }}</p>
+          <div v-for="item in [...(task.feedback ?? [])].reverse()" :key="item.id" class="p-2 rounded-lg bg-[rgb(var(--md-surface-container-low))] text-xs">
+            <div>{{ item.type === 'request_cancel' ? '请求取消' : item.type === 'request_adjust' ? '请求调整' : '备注' }} · {{ new Date(item.createdAt).toLocaleString() }} · {{ item.handledAt ? '已处理' : '待 AI 处理' }}</div>
+            <div class="whitespace-pre-wrap mt-1">{{ item.text }}</div>
+            <div v-if="item.aiReply" class="mt-1">AI 回复：{{ item.aiReply }}</div>
+          </div>
         </div>
       </details>
       <details class="mt-3 text-sm">

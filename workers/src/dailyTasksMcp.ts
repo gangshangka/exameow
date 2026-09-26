@@ -3,7 +3,7 @@ import type { D1Database, R2Bucket } from '@cloudflare/workers-types'
 import { z } from 'zod'
 import { createFlashcard, deleteFlashcard, listFlashcards, updateFlashcard } from './flashcards'
 import { getAttempt, imageContent, listAttempts } from './attemptRecords'
-import { getTaskHistory, listKnowledge, listTaskHistory, upsertKnowledge } from './knowledgeTaskHistory'
+import { getTaskHistory, listKnowledge, listPendingFeedback, listTaskHistory, updateTaskFromAi, upsertKnowledge } from './knowledgeTaskHistory'
 
 const tokenPattern = /^[0-9a-f]{64}$/
 const assignmentSchema = z.object({
@@ -36,7 +36,7 @@ export async function deviceHash(db: D1Database, token: string): Promise<string 
 }
 
 export async function listAssignments(db: D1Database, hash: string) {
-  const result = await db.prepare('SELECT id, external_id AS externalId, day AS date, title, description, planned_minutes AS plannedMinutes, knowledge_point_id AS knowledgePointId, created_at AS createdAt, updated_at AS updatedAt FROM daily_task_assignments WHERE token_hash = ? ORDER BY day DESC, created_at ASC LIMIT 500')
+  const result = await db.prepare('SELECT id, external_id AS externalId, day AS date, title, description, planned_minutes AS plannedMinutes, knowledge_point_id AS knowledgePointId, created_at AS createdAt, updated_at AS updatedAt FROM daily_task_assignments WHERE token_hash = ? AND cancelled_at IS NULL ORDER BY day DESC, created_at ASC LIMIT 500')
     .bind(hash).all()
   return result.results
 }
@@ -95,6 +95,31 @@ export async function handleDailyTasksMcp(request: Request, db: D1Database, imag
       description: 'Read a complete task record by ID, including reschedules, pause segments, wrong reason, forgotten point and next action.',
       inputSchema: z.object({ id: z.string() }), annotations: { readOnlyHint: true, openWorldHint: false },
     }, async ({ id }) => ({ content: [{ type: 'text', text: JSON.stringify(await getTaskHistory(db, hash, id)) }] }))
+    server.registerTool('list_pending_task_feedback', {
+      description: 'Read task comments and requests to adjust or cancel that have not yet been answered. Check these before planning more tasks.',
+      inputSchema: z.object({}), annotations: { readOnlyHint: true, openWorldHint: false },
+    }, async () => ({ content: [{ type: 'text', text: JSON.stringify(await listPendingFeedback(db, hash)) }] }))
+    server.registerTool('update_daily_task', {
+      description: 'Adjust an existing synced task by its task history ID, optionally replying to one feedback item. This preserves timer and review history.',
+      inputSchema: z.object({ id: z.string(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        title: z.string().trim().min(1).max(160).optional(), description: z.string().max(2000).optional(),
+        plannedMinutes: z.number().int().min(1).max(1440).optional(), knowledgePointId: z.string().max(100).nullable().optional(),
+        feedbackId: z.string().optional(), reply: z.string().max(2000).optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    }, async args => {
+      const updated = await updateTaskFromAi(db, hash, args.id, args)
+      return updated ? { content: [{ type: 'text', text: JSON.stringify(updated) }] }
+        : { content: [{ type: 'text', text: '任务不存在或已结束' }], isError: true }
+    })
+    server.registerTool('cancel_daily_task', {
+      description: 'Cancel an existing synced task after considering the learner’s comment. Keeps its timer and history.',
+      inputSchema: z.object({ id: z.string(), reason: z.string().trim().min(1).max(2000), feedbackId: z.string().optional(), reply: z.string().max(2000).optional() }),
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    }, async ({ id, reason, feedbackId, reply }) => {
+      const updated = await updateTaskFromAi(db, hash, id, { cancelReason: reason, feedbackId, reply })
+      return updated ? { content: [{ type: 'text', text: JSON.stringify(updated) }] }
+        : { content: [{ type: 'text', text: '任务不存在或已结束' }], isError: true }
+    })
     server.registerTool('list_flashcards', {
       description: 'List this device’s flashcards, including front, back, and IDs for editing.',
       inputSchema: z.object({}),
@@ -113,10 +138,10 @@ export async function handleDailyTasksMcp(request: Request, db: D1Database, imag
     })
     server.registerTool('update_flashcard', {
       description: 'Edit the front or back of a flashcard by ID.',
-      inputSchema: z.object({ id: z.string(), front: z.string().trim().min(1).max(4000).optional(), back: z.string().max(8000).optional(), knowledgePointId: z.string().max(100).nullable().optional() }),
+      inputSchema: z.object({ id: z.string(), front: z.string().trim().min(1).max(4000).optional(), back: z.string().max(8000).optional(), knowledgePointId: z.string().max(100).nullable().optional(), dueAt: z.number().int().nonnegative().optional() }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    }, async ({ id, front, back, knowledgePointId }) => ({
-      content: [{ type: 'text', text: (await updateFlashcard(db, hash, id, front, back, knowledgePointId)) ? '闪卡已更新' : '未找到闪卡' }],
+    }, async ({ id, front, back, knowledgePointId, dueAt }) => ({
+      content: [{ type: 'text', text: (await updateFlashcard(db, hash, id, front, back, knowledgePointId, dueAt)) ? '闪卡已更新' : '未找到闪卡' }],
     }))
     server.registerTool('delete_flashcard', {
       description: 'Delete a flashcard by ID.',

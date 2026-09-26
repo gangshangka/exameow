@@ -12,6 +12,7 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "test:import": "node scripts/smoke-external-import.mjs",
+    "test:study-loop": "node scripts/smoke-study-loop.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

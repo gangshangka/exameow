@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useDailyTasksStore } from './dailyTasks'
+import { nextReview, type ReviewRating } from '@/utils/flashcardScheduler'
 
 export interface Flashcard {
   id: string
@@ -12,6 +13,12 @@ export interface Flashcard {
   createdAt: number
   updatedAt: number
   deletedAt?: number
+  dueAt: number
+  intervalDays: number
+  easeFactor: number
+  repetitions: number
+  lapseCount: number
+  reviewHistory: { at: number; rating: ReviewRating; previousIntervalDays: number; nextIntervalDays: number }[]
 }
 
 const KEY = 'exameow-flashcards-v1'
@@ -24,6 +31,13 @@ function load(): Flashcard[] {
     return data.filter((card): card is Flashcard => card && typeof card.id === 'string'
       && typeof card.front === 'string' && typeof card.back === 'string'
       && typeof card.createdAt === 'number' && typeof card.updatedAt === 'number')
+      .map(card => ({ ...card, dueAt: typeof card.dueAt === 'number' ? card.dueAt : card.createdAt,
+        intervalDays: typeof card.intervalDays === 'number' ? card.intervalDays : 0,
+        easeFactor: typeof card.easeFactor === 'number' ? card.easeFactor : 2.5,
+        repetitions: typeof card.repetitions === 'number' ? card.repetitions : 0,
+        lapseCount: typeof card.lapseCount === 'number' ? card.lapseCount : 0,
+        reviewHistory: Array.isArray(card.reviewHistory) ? card.reviewHistory.filter(item => item && typeof item.at === 'number'
+          && ['again', 'hard', 'good', 'easy'].includes(item.rating)) : [] }))
   } catch { return [] }
 }
 
@@ -42,7 +56,8 @@ export const useFlashcardsStore = defineStore('flashcards', () => {
   function create(front: string, back = '', sourceQuestionId?: string, knowledgePointId?: string): Flashcard | null {
     if (!front.trim()) return null
     const now = Date.now()
-    const card: Flashcard = { id: newId(), front: front.trim(), back: back.trim(), sourceText: front.trim(), sourceQuestionId, knowledgePointId, createdAt: now, updatedAt: now }
+    const card: Flashcard = { id: newId(), front: front.trim(), back: back.trim(), sourceText: front.trim(), sourceQuestionId, knowledgePointId, createdAt: now, updatedAt: now,
+      dueAt: now, intervalDays: 0, easeFactor: 2.5, repetitions: 0, lapseCount: 0, reviewHistory: [] }
     cards.value.push(card)
     save()
     void syncRemote()
@@ -77,12 +92,30 @@ export const useFlashcardsStore = defineStore('flashcards', () => {
     void syncRemote()
   }
 
+  function review(id: string, rating: ReviewRating) {
+    const card = cards.value.find(item => item.id === id && !item.deletedAt)
+    if (!card) return
+    const now = Date.now()
+    const previousIntervalDays = card.intervalDays
+    Object.assign(card, nextReview(card, rating, now))
+    card.reviewHistory.push({ at: now, rating, previousIntervalDays, nextIntervalDays: card.intervalDays })
+    card.updatedAt = Math.max(now, card.updatedAt + 1)
+    save()
+    void syncRemote()
+  }
+
   function mergeRemote(remote: Flashcard[]) {
     for (const card of remote) {
       if (!card || typeof card.id !== 'string' || typeof card.updatedAt !== 'number') continue
       const index = cards.value.findIndex(item => item.id === card.id)
-      if (index < 0) cards.value.push(card)
-      else if (card.updatedAt > cards.value[index]!.updatedAt) cards.value[index] = card
+      const normalized: Flashcard = { ...card, dueAt: typeof card.dueAt === 'number' ? card.dueAt : card.createdAt,
+        intervalDays: typeof card.intervalDays === 'number' ? card.intervalDays : 0,
+        easeFactor: typeof card.easeFactor === 'number' ? card.easeFactor : 2.5,
+        repetitions: typeof card.repetitions === 'number' ? card.repetitions : 0,
+        lapseCount: typeof card.lapseCount === 'number' ? card.lapseCount : 0,
+        reviewHistory: Array.isArray(card.reviewHistory) ? card.reviewHistory : [] }
+      if (index < 0) cards.value.push(normalized)
+      else if (card.updatedAt > cards.value[index]!.updatedAt) cards.value[index] = normalized
     }
     save()
   }
@@ -114,5 +147,5 @@ export const useFlashcardsStore = defineStore('flashcards', () => {
     }
   }
 
-  return { cards, storageError, syncError, syncing, create, update, setKnowledgePoint, remove, mergeRemote, syncRemote }
+  return { cards, storageError, syncError, syncing, create, update, setKnowledgePoint, remove, review, mergeRemote, syncRemote }
 })

@@ -11,10 +11,11 @@ export const taskHistorySchema = z.object({
   initialDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), title: z.string().max(160),
   description: z.string().max(2000), source: z.enum(['manual', 'mcp']),
   externalId: z.string().max(100).optional(), plannedMinutes: z.number().optional(),
-  status: z.enum(['pending', 'running', 'paused', 'done']), elapsedMs: z.number().nonnegative(),
+  status: z.enum(['pending', 'running', 'paused', 'done', 'cancelled']), elapsedMs: z.number().nonnegative(),
   runningSince: z.number().optional(),
   timeSegments: z.array(z.object({ startedAt: z.number(), endedAt: z.number(), reason: z.enum(['pause', 'complete']) })).max(10000),
   completedAt: z.number().optional(), createdAt: z.number(), updatedAt: z.number(),
+  cancelledAt: z.number().optional(), cancellationReason: z.string().max(2000).optional(),
   dateChanges: z.array(z.object({ at: z.number(), from: z.string(), to: z.string() })).max(1000),
   completionQuality: z.enum(['not_fluent', 'partial', 'mastered', 'retest_tomorrow']).optional(),
   reviewNotes: z.string().max(20000), mistakeReason: z.string().max(20000),
@@ -22,6 +23,8 @@ export const taskHistorySchema = z.object({
   knowledgePointId: z.string().max(100).optional(),
   linkedQuestionIds: z.array(z.string().max(200)).max(1000),
   linkedFlashcardIds: z.array(z.string().max(100)).max(1000),
+  feedback: z.array(z.object({ id: z.string().max(100), type: z.enum(['comment', 'request_cancel', 'request_adjust']),
+    text: z.string().max(2000), createdAt: z.number(), handledAt: z.number().optional(), aiReply: z.string().max(2000).optional() })).max(500).optional(),
 })
 
 export async function listKnowledge(db: D1Database, hash: string) {
@@ -47,4 +50,65 @@ export async function upsertTaskHistory(db: D1Database, hash: string, tasks: z.i
   await db.batch(tasks.map(task => db.prepare(`INSERT INTO daily_task_history (token_hash,id,body,updated_at,day) VALUES (?,?,?,?,?)
     ON CONFLICT(token_hash,id) DO UPDATE SET body=excluded.body,updated_at=excluded.updated_at,day=excluded.day
     WHERE excluded.updated_at > daily_task_history.updated_at`).bind(hash, task.id, JSON.stringify(task), task.updatedAt, task.date)))
+}
+
+type Task = z.infer<typeof taskHistorySchema>
+function handled(task: Task, feedbackId?: string, reply?: string) {
+  if (!feedbackId) return
+  const feedback = task.feedback?.find(item => item.id === feedbackId)
+  if (feedback) { feedback.handledAt = Date.now(); feedback.aiReply = reply?.trim() }
+}
+
+export async function updateTaskFromAi(db: D1Database, hash: string, id: string, patch: {
+  date?: string; title?: string; description?: string; plannedMinutes?: number; knowledgePointId?: string | null;
+  feedbackId?: string; reply?: string; cancelReason?: string
+}): Promise<Task | null> {
+  const task = await getTaskHistory(db, hash, id)
+  if (!task || task.status === 'done' || task.status === 'cancelled') return null
+  const now = Date.now()
+  if (patch.cancelReason !== undefined) {
+    if (task.status === 'running' && task.runningSince) {
+      task.elapsedMs += Math.max(0, now - task.runningSince)
+      task.timeSegments.push({ startedAt: task.runningSince, endedAt: now, reason: 'pause' })
+      task.runningSince = undefined
+    }
+    task.status = 'cancelled'
+    task.cancelledAt = now
+    task.cancellationReason = patch.cancelReason.trim()
+  } else {
+    if (patch.date && patch.date !== task.date) {
+      task.dateChanges.push({ at: now, from: task.date, to: patch.date })
+      task.date = patch.date
+    }
+    if (patch.title !== undefined) task.title = patch.title.trim()
+    if (patch.description !== undefined) task.description = patch.description.trim()
+    if (patch.plannedMinutes !== undefined) task.plannedMinutes = patch.plannedMinutes
+    if (patch.knowledgePointId !== undefined) task.knowledgePointId = patch.knowledgePointId ?? undefined
+  }
+  handled(task, patch.feedbackId, patch.reply)
+  task.updatedAt = Math.max(now, task.updatedAt + 1)
+  await upsertTaskHistory(db, hash, [task])
+  if (task.source === 'mcp' && task.externalId) {
+    if (patch.cancelReason !== undefined) {
+      await db.prepare('UPDATE daily_task_assignments SET cancelled_at = ?, updated_at = ? WHERE token_hash = ? AND id = ?')
+        .bind(now, now, hash, task.externalId).run()
+    } else {
+      await db.prepare(`UPDATE daily_task_assignments SET day = ?, title = ?, description = ?, planned_minutes = ?,
+        knowledge_point_id = ?, updated_at = ? WHERE token_hash = ? AND id = ?`)
+        .bind(task.date, task.title, task.description, task.plannedMinutes ?? null, task.knowledgePointId ?? null, now, hash, task.externalId).run()
+    }
+  }
+  return task
+}
+
+export async function listPendingFeedback(db: D1Database, hash: string) {
+  const result: { taskId: string; title: string; date: string; status: string; feedback: NonNullable<Task['feedback']>[number] }[] = []
+  for (let offset = 0; ; offset += 500) {
+    const tasks = await listTaskHistory(db, hash, 500, offset)
+    for (const task of tasks) for (const feedback of task.feedback ?? []) if (!feedback.handledAt) {
+      result.push({ taskId: task.id, title: task.title, date: task.date, status: task.status, feedback })
+    }
+    if (tasks.length < 500) break
+  }
+  return result
 }

@@ -35,6 +35,10 @@
     "screenrecord:allow-begin",
     "screenrecord:allow-adjust",
     "screenrecord:allow-stop",
-    "screenrecord:allow-show-answer"
+    "screenrecord:allow-show-answer",
+    "studytools:allow-has-usage-access",
+    "studytools:allow-open-usage-access-settings",
+    "studytools:allow-get-usage-stats",
+    "studytools:allow-take-selected-text"
   ]
 }
